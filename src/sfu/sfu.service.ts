@@ -64,16 +64,22 @@ export class SfuService implements OnModuleInit, OnModuleDestroy {
   }
 
   trackRouterCreated(worker: Worker): void {
-    this.routersPerWorker.set(
-      worker,
-      (this.routersPerWorker.get(worker) ?? 0) + 1,
-    );
+    const count = this.routersPerWorker.get(worker);
+
+    if (count === undefined) {
+      return;
+    }
+
+    this.routersPerWorker.set(worker, count + 1);
   }
 
   trackRouterClosed(worker: Worker): void {
-    this.routersPerWorker.set(
-      worker,
-      Math.max(0, (this.routersPerWorker.get(worker) ?? 1) - 1),
-    );
+    const count = this.routersPerWorker.get(worker);
+
+    if (count === undefined) {
+      return;
+    }
+
+    this.routersPerWorker.set(worker, Math.max(0, count - 1));
   }
 }
