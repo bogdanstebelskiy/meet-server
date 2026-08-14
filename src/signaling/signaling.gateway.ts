@@ -31,11 +31,8 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @MessageBody() { roomId, displayName }: JoinPayload,
   ) {
     const peerId = client.id;
-    const { peer, existingPeers } = await this.signalingService.join(
-      roomId,
-      peerId,
-      displayName,
-    );
+    const { peer, existingPeers, existingProducers } =
+      await this.signalingService.join(roomId, peerId, displayName);
 
     client.data.roomId = roomId;
     client.data.peerId = peerId;
@@ -44,6 +41,10 @@ export class SignalingGateway implements OnGatewayDisconnect {
     client
       .to(roomId)
       .emit('newPeer', { id: peer.id, displayName: peer.displayName });
+
+    for (const existingProducer of existingProducers) {
+      client.emit('newProducer', existingProducer);
+    }
 
     return { peerId, existingPeers };
   }

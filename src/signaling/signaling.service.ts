@@ -17,14 +17,24 @@ export class SignalingService {
 
   async join(roomId: string, peerId: string, displayName: string) {
     const room = await this.roomsService.getOrCreateRoom(roomId);
-    const existingPeers = room
-      .getOtherPeers(peerId)
-      .map((peer) => ({ id: peer.id, displayName: peer.displayName }));
+    const otherPeers = room.getOtherPeers(peerId);
+    const existingPeers = otherPeers.map((peer) => ({
+      id: peer.id,
+      displayName: peer.displayName,
+    }));
+
+    const existingProducers = otherPeers.flatMap((peer) =>
+      [...peer.producers.values()].map((producer) => ({
+        peerId: peer.id,
+        producerId: producer.id,
+        kind: producer.kind,
+      })),
+    );
 
     const peer = new Peer(peerId, displayName);
     room.addPeer(peer);
 
-    return { peer, existingPeers };
+    return { peer, existingPeers, existingProducers };
   }
 
   getRoom(roomId: string) {

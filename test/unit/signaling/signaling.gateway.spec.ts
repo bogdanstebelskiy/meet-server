@@ -13,6 +13,7 @@ describe('SignalingGateway', () => {
       data,
       join: jest.fn().mockResolvedValue(undefined),
       to: jest.fn().mockReturnValue({ emit }),
+      emit: jest.fn(),
       _emit: emit,
     } as any;
   };
@@ -43,7 +44,11 @@ describe('SignalingGateway', () => {
     it('uses the socket id as peerId, joins the socket.io room, and broadcasts newPeer', async () => {
       const client = createFakeClient();
       const peer = { id: 'socket-1', displayName: 'Alice' };
-      signalingService.join.mockResolvedValue({ peer, existingPeers: [] });
+      signalingService.join.mockResolvedValue({
+        peer,
+        existingPeers: [],
+        existingProducers: [],
+      });
 
       const result = await gateway.join(client, {
         roomId: 'room-1',
@@ -64,6 +69,48 @@ describe('SignalingGateway', () => {
         displayName: 'Alice',
       });
       expect(result).toEqual({ peerId: 'socket-1', existingPeers: [] });
+    });
+
+    it('emits newProducer to the joining client for each existing producer', async () => {
+      const client = createFakeClient();
+      const peer = { id: 'socket-1', displayName: 'Alice' };
+      signalingService.join.mockResolvedValue({
+        peer,
+        existingPeers: [{ id: 'peer-bob', displayName: 'Bob' }],
+        existingProducers: [
+          { peerId: 'peer-bob', producerId: 'prod-audio', kind: 'audio' },
+          { peerId: 'peer-bob', producerId: 'prod-video', kind: 'video' },
+        ],
+      });
+
+      await gateway.join(client, { roomId: 'room-1', displayName: 'Alice' });
+
+      // Direct emit, not a room broadcast - nobody else needs this.
+      expect(client.emit).toHaveBeenCalledTimes(2);
+      expect(client.emit).toHaveBeenCalledWith('newProducer', {
+        peerId: 'peer-bob',
+        producerId: 'prod-audio',
+        kind: 'audio',
+      });
+      expect(client.emit).toHaveBeenCalledWith('newProducer', {
+        peerId: 'peer-bob',
+        producerId: 'prod-video',
+        kind: 'video',
+      });
+    });
+
+    it('emits nothing when there are no existing producers', async () => {
+      const client = createFakeClient();
+      const peer = { id: 'socket-1', displayName: 'Alice' };
+      signalingService.join.mockResolvedValue({
+        peer,
+        existingPeers: [],
+        existingProducers: [],
+      });
+
+      await gateway.join(client, { roomId: 'room-1', displayName: 'Alice' });
+
+      expect(client.emit).not.toHaveBeenCalled();
     });
   });
 

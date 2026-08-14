@@ -57,6 +57,44 @@ describe('SignalingService', () => {
 
       expect(existingPeers).toEqual([]);
     });
+
+    it('collects existing producers from other peers', async () => {
+      const bob = new Peer('peer-bob', 'Bob');
+      bob.producers.set('prod-audio', { id: 'prod-audio', kind: 'audio' } as any);
+      bob.producers.set('prod-video', { id: 'prod-video', kind: 'video' } as any);
+      const carol = new Peer('peer-carol', 'Carol');
+      carol.producers.set('prod-carol', { id: 'prod-carol', kind: 'audio' } as any);
+      room.addPeer(bob);
+      room.addPeer(carol);
+
+      const { existingProducers } = await service.join(
+        'room-1',
+        'peer-1',
+        'Alice',
+      );
+
+      expect(existingProducers).toEqual(
+        expect.arrayContaining([
+          { peerId: 'peer-bob', producerId: 'prod-audio', kind: 'audio' },
+          { peerId: 'peer-bob', producerId: 'prod-video', kind: 'video' },
+          { peerId: 'peer-carol', producerId: 'prod-carol', kind: 'audio' },
+        ]),
+      );
+      expect(existingProducers).toHaveLength(3);
+    });
+
+    it('returns empty existingProducers when nobody is producing', async () => {
+      const bob = new Peer('peer-bob', 'Bob');
+      room.addPeer(bob);
+
+      const { existingProducers } = await service.join(
+        'room-1',
+        'peer-1',
+        'Alice',
+      );
+
+      expect(existingProducers).toEqual([]);
+    });
   });
 
   describe('getRoom / getPeer', () => {

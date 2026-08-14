@@ -377,6 +377,67 @@ describe('Signaling (e2e)', () => {
       });
     });
 
+    it('regression: late joiner receives newProducer for pre-existing tracks', async () => {
+      const alice = await connectClient();
+      await emitAsync(alice, 'join', {
+        roomId: 'late-joiner-room',
+        displayName: 'Alice',
+      });
+      const rtpCapabilities = await emitAsync(
+        alice,
+        'getRouterRtpCapabilities',
+      );
+      const aliceSendTransport = await emitAsync(
+        alice,
+        'createWebRtcTransport',
+        { direction: 'send' },
+      );
+      await emitAsync(alice, 'connectWebRtcTransport', {
+        transportId: aliceSendTransport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
+      const produced = await emitAsync(alice, 'produce', {
+        transportId: aliceSendTransport.id,
+        kind: 'audio',
+        rtpParameters: audioProducerRtpParameters(rtpCapabilities, 44444444),
+      });
+
+      // Bob joins after Alice already produced - only passes if join() backfills.
+      const bob = await connectClient();
+      const bobNewProducer = waitForEvent(bob, 'newProducer');
+      const bobJoin = await emitAsync(bob, 'join', {
+        roomId: 'late-joiner-room',
+        displayName: 'Bob',
+      });
+
+      expect(bobJoin.existingPeers).toEqual([
+        { id: alice.id, displayName: 'Alice' },
+      ]);
+      expect(await bobNewProducer).toEqual({
+        peerId: alice.id,
+        producerId: produced.id,
+        kind: 'audio',
+      });
+
+      // The backfilled producer must be consumable exactly like a live one.
+      const bobRecvTransport = await emitAsync(bob, 'createWebRtcTransport', {
+        direction: 'recv',
+      });
+      await emitAsync(bob, 'connectWebRtcTransport', {
+        transportId: bobRecvTransport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
+      const consumed = await emitAsync(bob, 'consume', {
+        producerId: produced.id,
+        rtpCapabilities,
+      });
+      expect(consumed).toMatchObject({
+        id: expect.any(String),
+        producerId: produced.id,
+        kind: 'audio',
+      });
+    });
+
     it('disconnecting without ever joining does not take the server down', async () => {
       const ghost = await connectClient();
       ghost.disconnect();
