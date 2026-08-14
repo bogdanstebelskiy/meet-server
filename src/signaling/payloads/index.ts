@@ -34,3 +34,7 @@ export interface ConsumePayload {
 export interface ResumeConsumerPayload {
   consumerId: string;
 }
+
+export interface ProducerIdPayload {
+  producerId: string;
+}

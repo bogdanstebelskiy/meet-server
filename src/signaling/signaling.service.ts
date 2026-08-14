@@ -147,6 +147,18 @@ export class SignalingService {
     await consumer.resume();
   }
 
+  async pauseProducer(roomId: string, peerId: string, producerId: string) {
+    const producer = this.findProducer(roomId, peerId, producerId);
+
+    await producer.pause();
+  }
+
+  async resumeProducer(roomId: string, peerId: string, producerId: string) {
+    const producer = this.findProducer(roomId, peerId, producerId);
+
+    await producer.resume();
+  }
+
   leave(roomId: string, peerId: string): void {
     const room = this.roomsService.getRoom(roomId);
 
@@ -159,6 +171,19 @@ export class SignalingService {
     if (room.isEmpty()) {
       this.roomsService.closeRoom(roomId);
     }
+  }
+
+  private findProducer(roomId: string, peerId: string, producerId: string) {
+    const peer = this.getPeer(roomId, peerId);
+    const producer = peer.producers.get(producerId);
+
+    if (!producer) {
+      throw new NotFoundException(
+        `Producer ${producerId} not found for peer ${peerId}`,
+      );
+    }
+
+    return producer;
   }
 
   private findTransport(roomId: string, peerId: string, transportId: string) {

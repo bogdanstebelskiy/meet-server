@@ -15,6 +15,7 @@ import type {
   CreateTransportPayload,
   JoinPayload,
   ProducePayload,
+  ProducerIdPayload,
   ResumeConsumerPayload,
 } from './payloads';
 import type { SignalingSocket, SocketContext } from './types';
@@ -135,6 +136,32 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @MessageBody() { consumerId }: ResumeConsumerPayload,
   ) {
     await this.signalingService.resumeConsumer(roomId, peerId, consumerId);
+
+    return { resumed: true };
+  }
+
+  @SubscribeMessage('pauseProducer')
+  async pauseProducer(
+    @ConnectedSocket() client: SignalingSocket,
+    @RequireSocketContext() { roomId, peerId }: SocketContext,
+    @MessageBody() { producerId }: ProducerIdPayload,
+  ) {
+    await this.signalingService.pauseProducer(roomId, peerId, producerId);
+
+    client.to(roomId).emit('producerPaused', { peerId, producerId });
+
+    return { paused: true };
+  }
+
+  @SubscribeMessage('resumeProducer')
+  async resumeProducer(
+    @ConnectedSocket() client: SignalingSocket,
+    @RequireSocketContext() { roomId, peerId }: SocketContext,
+    @MessageBody() { producerId }: ProducerIdPayload,
+  ) {
+    await this.signalingService.resumeProducer(roomId, peerId, producerId);
+
+    client.to(roomId).emit('producerResumed', { peerId, producerId });
 
     return { resumed: true };
   }
