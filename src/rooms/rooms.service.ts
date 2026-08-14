@@ -1,26 +1,62 @@
 import { Injectable } from '@nestjs/common';
-import { CreateRoomDto } from './dto/create-room.dto';
-import { UpdateRoomDto } from './dto/update-room.dto';
+import { SfuService } from '../sfu/sfu.service';
+import { mediaCodecs } from '../sfu/config';
+import { Room } from './entities/room.entity';
 
 @Injectable()
 export class RoomsService {
-  create(createRoomDto: CreateRoomDto) {
-    return 'This action adds a new room';
+  private readonly rooms = new Map<string, Room>();
+  // Dedupes concurrent getOrCreateRoom calls for a new roomId, so two peers
+  // joining at the same instant don't each create their own router.
+  private readonly pendingRooms = new Map<string, Promise<Room>>();
+
+  constructor(private readonly sfuService: SfuService) {}
+
+  async getOrCreateRoom(roomId: string): Promise<Room> {
+    const existing = this.rooms.get(roomId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const pending = this.pendingRooms.get(roomId);
+
+    if (pending) {
+      return pending;
+    }
+
+    const creation = this.createRoom(roomId).finally(() =>
+      this.pendingRooms.delete(roomId),
+    );
+    this.pendingRooms.set(roomId, creation);
+
+    return creation;
   }
 
-  findAll() {
-    return `This action returns all rooms`;
+  private async createRoom(roomId: string): Promise<Room> {
+    const worker = this.sfuService.getWorker();
+    const router = await worker.createRouter({ mediaCodecs });
+    this.sfuService.trackRouterCreated(worker);
+
+    const room = new Room(roomId, router, worker);
+    this.rooms.set(roomId, room);
+
+    return room;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} room`;
+  getRoom(roomId: string): Room | undefined {
+    return this.rooms.get(roomId);
   }
 
-  update(id: number, updateRoomDto: UpdateRoomDto) {
-    return `This action updates a #${id} room`;
-  }
+  closeRoom(roomId: string): void {
+    const room = this.rooms.get(roomId);
 
-  remove(id: number) {
-    return `This action removes a #${id} room`;
+    if (!room) {
+      return;
+    }
+
+    room.close();
+    this.sfuService.trackRouterClosed(room.worker);
+    this.rooms.delete(roomId);
   }
 }
