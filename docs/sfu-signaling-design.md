@@ -107,14 +107,35 @@ generic `index.ts` name would say nothing about what it is.
 
 Request/response handlers (client-initiated):
 `getRouterRtpCapabilities`, `join`, `createWebRtcTransport`,
-`connectWebRtcTransport`, `produce`, `consume`, `produceData`/`consumeData`
-(if data channels are needed), pause/resume/close on producers and consumers,
-`restartIce`.
+`connectWebRtcTransport`, `produce`, `consume`, `resumeConsumer`,
+`pauseProducer`, `resumeProducer`, `produceData`/`consumeData`
+(if data channels are needed), `restartIce`.
 
 Server-initiated notifications (broadcast to room):
-`newPeer`, `peerClosed`, `newConsumer`, `consumerClosed`,
-`consumerPaused`/`consumerResumed`, `consumerLayersChanged` (simulcast),
+`newPeer`, `peerClosed`, `newProducer`, `producerPaused`, `producerResumed`,
+`newConsumer`, `consumerClosed`, `consumerLayersChanged` (simulcast),
 `activeSpeaker` (if using `AudioLevelObserver`).
+
+**Mute/unmute and camera hide/show are producer pause, not track removal.**
+`pauseProducer`/`resumeProducer` call `producer.pause()`/`resume()` on the
+peer's own producer (ownership checked the same way `produce` checks
+`sendTransport.id`) and broadcast `producerPaused`/`producerResumed` so every
+other peer's UI reflects the state and RTP for that producer actually stops
+(pausing a producer pauses every consumer reading from it). Disabling the
+local track alone (`track.enabled = false`) only stops local playback; the
+encoder keeps sending to the SFU until the producer itself is paused.
+
+**`join` backfills `newProducer` for producers that already existed.** A peer's
+`join` ack only ever returns `existingPeers` (id/displayName); the only way a client
+learns about producers is `newProducer`, which the `produce` handler broadcasts
+solely to sockets already in the room *at that moment*. A peer joining after others
+are already producing would see peer names but no video/audio, with no endpoint to
+ever ask for the producers it missed. `SignalingService.join` now also collects
+every other peer's current producers, and the gateway emits `newProducer` directly
+to the new socket (not a room broadcast) for each, right after the join ack. Found
+while tracing the actual join/produce contract for client integration rather than
+assuming mediasoup-demo's protoo shape applied 1:1; regression-tested in the e2e
+suite (late joiner + real consume) and confirmed with a manual two-socket smoke test.
 
 **Cascade cleanup on disconnect.** Closing a peer's transports cascades to close
 its producers/consumers automatically (mediasoup's own object graph handles this),
@@ -154,14 +175,33 @@ statement, so a client awaiting their ack (the same pattern every other event he
 supports) hung forever with no error. Both now return a small payload
 (`{ connected: true }`, `{ resumed: true }`). Also found via the e2e suite.
 
+## Local network / phone testing
+
+**`webRtcAnnouncedAddress` (`sfu/config/index.ts`) must be a real LAN IP, not
+`0.0.0.0` or `127.0.0.1`.** Binding `ip: '0.0.0.0'` in `createWebRtcTransport`'s
+`listenInfos` with no `announcedAddress` makes mediasoup announce `0.0.0.0`
+itself as the ICE candidate - unusable by any browser, even two tabs on the
+same machine. `127.0.0.1` doesn't fully fix it either: Firefox's ICE stack
+won't pair a real network-interface local candidate against a loopback remote
+one (confirmed via `about:webrtc` showing permanently empty check lists),
+while Chrome/Edge tolerate it. Found through real cross-browser manual
+testing, not the e2e suite - exactly the class of bug the browser e2e note
+below predicted only real ICE/DTLS negotiation could catch.
+
+**`main.ts` optionally serves HTTPS.** A page served over HTTPS (required for
+`getUserMedia` on anything but `localhost`) refuses to open a plain `ws://`
+connection to this server as mixed content, so phone/LAN testing needs TLS
+here too. `loadHttpsOptions()` loads a cert from `certificates/` if present
+(`mkcert`-generated, gitignored), falling back to plain HTTP otherwise - so
+this stays a no-op for pure-localhost dev.
+
 ## Deferred until there's a concrete need
 
 - **`pipeToRouter` / multi-worker rooms**: only matters past single-worker
   capacity for one room; premature before load-testing shows it's needed.
-- **TURN/STUN config, announced IP**: required before this works outside
-  localhost/LAN, but orthogonal to the module structure; slots into `sfu`'s worker
-  creation options and `rooms`' `createWebRtcTransport` call whenever real network
-  deployment is next.
+- **TURN/STUN**: required before this works across restrictive NATs/firewalls,
+  not just LAN; orthogonal to the module structure, slots into `sfu`'s worker
+  creation options whenever real network deployment is next.
 - **Broadcaster HTTP API, recording, active-speaker detection, SVC/simulcast
   layer control**: demo features not required for a minimal working room; add
   once core produce/consume path is proven.
@@ -180,8 +220,9 @@ else can prove:
   syntactically valid) dtlsParameters stand in for a browser's real ICE/DTLS
   negotiation, since `connectWebRtcTransport`/`produce`/`consume` are pure
   signaling RPCs that don't block on actual connectivity. This is what actually
-  caught the two bugs above: both were invisible to unit tests since they only
-  surface once a real socket.io adapter is in the loop.
+  caught/confirmed the three bugs above: each was invisible to unit tests since
+  they only surface once a real socket.io adapter (or a real join/produce
+  sequence across two sockets) is in the loop.
 - **Browser e2e**: deferred; not implemented, since this repo has no client to
   drive. Would be the only tier able to prove actual ICE/DTLS negotiation,
   simulcast layer switching under real network throttling, and multi-tab UX
