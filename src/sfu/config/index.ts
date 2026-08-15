@@ -33,3 +33,9 @@ export const webRtcPortRange: TransportPortRange = {
   min: 40000,
   max: 49999,
 };
+
+// Must be this machine's real LAN IP, not 127.0.0.1 or 0.0.0.0 - Firefox
+// won't pair a real local ICE candidate against a loopback remote one, and
+// 0.0.0.0 isn't connectable at all. Update to your own machine's IP
+// (ipconfig/ifconfig) when running on a different machine or network.
+export const webRtcAnnouncedAddress = '10.214.228.187';

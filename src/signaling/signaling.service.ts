@@ -7,7 +7,7 @@ import type {
 } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
 import { Peer } from '../rooms/entities/peer.entity';
-import { webRtcPortRange } from '../sfu/config';
+import { webRtcAnnouncedAddress, webRtcPortRange } from '../sfu/config';
 import { TRANSPORT_DIRECTIONS } from './types';
 import type { TransportDirection } from './types';
 
@@ -68,8 +68,18 @@ export class SignalingService {
 
     const transport = await room.router.createWebRtcTransport({
       listenInfos: [
-        { protocol: 'udp', ip: '0.0.0.0', portRange: webRtcPortRange },
-        { protocol: 'tcp', ip: '0.0.0.0', portRange: webRtcPortRange },
+        {
+          protocol: 'udp',
+          ip: '0.0.0.0',
+          announcedAddress: webRtcAnnouncedAddress,
+          portRange: webRtcPortRange,
+        },
+        {
+          protocol: 'tcp',
+          ip: '0.0.0.0',
+          announcedAddress: webRtcAnnouncedAddress,
+          portRange: webRtcPortRange,
+        },
       ],
       enableUdp: true,
       enableTcp: true,
