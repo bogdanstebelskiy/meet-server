@@ -438,6 +438,56 @@ describe('Signaling (e2e)', () => {
       });
     });
 
+    it('regression: consume ack reports producerPaused for a producer paused before the consumer ever joined', async () => {
+      const alice = await connectClient();
+      await emitAsync(alice, 'join', {
+        roomId: 'already-paused-room',
+        displayName: 'Alice',
+      });
+      const rtpCapabilities = await emitAsync(
+        alice,
+        'getRouterRtpCapabilities',
+      );
+      const aliceSendTransport = await emitAsync(
+        alice,
+        'createWebRtcTransport',
+        { direction: 'send' },
+      );
+      await emitAsync(alice, 'connectWebRtcTransport', {
+        transportId: aliceSendTransport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
+      const produced = await emitAsync(alice, 'produce', {
+        transportId: aliceSendTransport.id,
+        kind: 'audio',
+        rtpParameters: audioProducerRtpParameters(rtpCapabilities, 66666666),
+      });
+
+      // Alice pauses before Bob ever joins - producerPaused (the live
+      // broadcast) never reaches Bob, so the consume ack is the only way
+      // Bob can learn the producer started out paused.
+      await emitAsync(alice, 'pauseProducer', { producerId: produced.id });
+
+      const bob = await connectClient();
+      await emitAsync(bob, 'join', {
+        roomId: 'already-paused-room',
+        displayName: 'Bob',
+      });
+      const bobRecvTransport = await emitAsync(bob, 'createWebRtcTransport', {
+        direction: 'recv',
+      });
+      await emitAsync(bob, 'connectWebRtcTransport', {
+        transportId: bobRecvTransport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
+      const consumed = await emitAsync(bob, 'consume', {
+        producerId: produced.id,
+        rtpCapabilities,
+      });
+
+      expect(consumed).toMatchObject({ producerPaused: true });
+    });
+
     it('disconnecting without ever joining does not take the server down', async () => {
       const ghost = await connectClient();
       ghost.disconnect();

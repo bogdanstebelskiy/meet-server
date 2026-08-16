@@ -128,6 +128,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
       producerId,
       kind: consumer.kind,
       rtpParameters: consumer.rtpParameters,
+      producerPaused: consumer.producerPaused,
     };
   }
 

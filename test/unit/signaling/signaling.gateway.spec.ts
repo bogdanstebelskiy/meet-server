@@ -195,6 +195,36 @@ describe('SignalingGateway', () => {
     });
   });
 
+  describe('consume', () => {
+    it('includes producerPaused so the client knows an already-paused producer', async () => {
+      signalingService.consume.mockResolvedValue({
+        id: 'cons-1',
+        kind: 'video',
+        rtpParameters: {},
+        producerPaused: true,
+      });
+
+      const result = await gateway.consume(
+        { roomId: 'room-1', peerId: 'socket-1' },
+        { producerId: 'prod-1', rtpCapabilities: {} as any },
+      );
+
+      expect(signalingService.consume).toHaveBeenCalledWith(
+        'room-1',
+        'socket-1',
+        'prod-1',
+        {},
+      );
+      expect(result).toEqual({
+        id: 'cons-1',
+        producerId: 'prod-1',
+        kind: 'video',
+        rtpParameters: {},
+        producerPaused: true,
+      });
+    });
+  });
+
   describe('handleDisconnect', () => {
     it('is a no-op when the socket disconnects without ever having joined a room', () => {
       const client = createFakeClient();
