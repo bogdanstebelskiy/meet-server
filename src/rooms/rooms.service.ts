@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SfuService } from '../sfu/sfu.service';
 import { mediaCodecs } from '../sfu/config';
 import { Room } from './entities/room.entity';
+import { Peer } from './entities/peer.entity';
 
 @Injectable()
 export class RoomsService {
@@ -46,6 +47,10 @@ export class RoomsService {
 
   getRoom(roomId: string): Room | undefined {
     return this.rooms.get(roomId);
+  }
+
+  getPeer(roomId: string, peerId: string): Peer | undefined {
+    return this.getRoom(roomId)?.peers.get(peerId);
   }
 
   closeRoom(roomId: string): void {

@@ -22,6 +22,7 @@ describe('SignalingGateway', () => {
     signalingService = {
       join: jest.fn(),
       getRoom: jest.fn(),
+      getPeer: jest.fn(),
       createWebRtcTransport: jest.fn(),
       connectWebRtcTransport: jest.fn(),
       produce: jest.fn(),
@@ -206,7 +207,7 @@ describe('SignalingGateway', () => {
 
       const result = await gateway.consume(
         { roomId: 'room-1', peerId: 'socket-1' },
-        { producerId: 'prod-1', rtpCapabilities: {} as any },
+        { producerId: 'prod-1', rtpCapabilities: {} },
       );
 
       expect(signalingService.consume).toHaveBeenCalledWith(

@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { SignalingService } from '../../../src/signaling/signaling.service';
 import { RoomsService } from '../../../src/rooms/rooms.service';
+import { ChatService } from '../../../src/chat/chat.service';
 import { Room } from '../../../src/rooms/entities/room.entity';
 import { Peer } from '../../../src/rooms/entities/peer.entity';
 
@@ -9,7 +10,11 @@ describe('SignalingService', () => {
   let roomsService: {
     getOrCreateRoom: jest.Mock;
     getRoom: jest.Mock;
+    getPeer: jest.Mock;
     closeRoom: jest.Mock;
+  };
+  let chatService: {
+    deleteRoomHistory: jest.Mock;
   };
   let router: {
     rtpCapabilities: unknown;
@@ -29,10 +34,20 @@ describe('SignalingService', () => {
     roomsService = {
       getOrCreateRoom: jest.fn().mockResolvedValue(room),
       getRoom: jest.fn().mockReturnValue(room),
+      getPeer: jest.fn((_roomId: string, peerId: string) =>
+        room.peers.get(peerId),
+      ),
       closeRoom: jest.fn(),
     };
 
-    service = new SignalingService(roomsService as unknown as RoomsService);
+    chatService = {
+      deleteRoomHistory: jest.fn().mockResolvedValue(undefined),
+    };
+
+    service = new SignalingService(
+      roomsService as unknown as RoomsService,
+      chatService as unknown as ChatService,
+    );
   });
 
   describe('join', () => {
@@ -60,10 +75,19 @@ describe('SignalingService', () => {
 
     it('collects existing producers from other peers', async () => {
       const bob = new Peer('peer-bob', 'Bob');
-      bob.producers.set('prod-audio', { id: 'prod-audio', kind: 'audio' } as any);
-      bob.producers.set('prod-video', { id: 'prod-video', kind: 'video' } as any);
+      bob.producers.set('prod-audio', {
+        id: 'prod-audio',
+        kind: 'audio',
+      } as any);
+      bob.producers.set('prod-video', {
+        id: 'prod-video',
+        kind: 'video',
+      } as any);
       const carol = new Peer('peer-carol', 'Carol');
-      carol.producers.set('prod-carol', { id: 'prod-carol', kind: 'audio' } as any);
+      carol.producers.set('prod-carol', {
+        id: 'prod-carol',
+        kind: 'audio',
+      } as any);
       room.addPeer(bob);
       room.addPeer(carol);
 
@@ -300,15 +324,17 @@ describe('SignalingService', () => {
       expect(room.peers.has('peer-1')).toBe(false);
       expect(room.peers.has('peer-2')).toBe(true);
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
+      expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
     });
 
-    it('closes the room once the last peer leaves', () => {
+    it('closes the room and deletes its chat history once the last peer leaves', () => {
       const peer = new Peer('peer-1', 'Alice');
       room.addPeer(peer);
 
       service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
+      expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
     });
   });
 });

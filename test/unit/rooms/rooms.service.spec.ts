@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RoomsService } from '../../../src/rooms/rooms.service';
 import { SfuService } from '../../../src/sfu/sfu.service';
+import { Peer } from '../../../src/rooms/entities/peer.entity';
 
 describe('RoomsService', () => {
   let service: RoomsService;
@@ -81,6 +82,32 @@ describe('RoomsService', () => {
 
   it('getRoom returns undefined for an unknown room', () => {
     expect(service.getRoom('missing')).toBeUndefined();
+  });
+
+  it('getPeer returns undefined for an unknown room', () => {
+    expect(service.getPeer('missing', 'peer-1')).toBeUndefined();
+  });
+
+  it('getPeer returns undefined for an unknown peer in a known room', async () => {
+    const worker = createFakeWorker();
+    worker.createRouter.mockResolvedValue({ close: jest.fn() });
+    sfuService.getWorker.mockReturnValue(worker);
+
+    await service.getOrCreateRoom('room-1');
+
+    expect(service.getPeer('room-1', 'missing')).toBeUndefined();
+  });
+
+  it('getPeer returns the peer once it has joined the room', async () => {
+    const worker = createFakeWorker();
+    worker.createRouter.mockResolvedValue({ close: jest.fn() });
+    sfuService.getWorker.mockReturnValue(worker);
+
+    const room = await service.getOrCreateRoom('room-1');
+    const peer = new Peer('peer-1', 'Alice');
+    room.addPeer(peer);
+
+    expect(service.getPeer('room-1', 'peer-1')).toBe(peer);
   });
 
   it('closeRoom is a no-op for an unknown room', () => {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
   DtlsParameters,
   MediaKind,
@@ -7,13 +7,19 @@ import type {
 } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
 import { Peer } from '../rooms/entities/peer.entity';
+import { ChatService } from '../chat/chat.service';
 import { webRtcAnnouncedAddress, webRtcPortRange } from '../sfu/config';
 import { TRANSPORT_DIRECTIONS } from './types';
 import type { TransportDirection } from './types';
 
 @Injectable()
 export class SignalingService {
-  constructor(private readonly roomsService: RoomsService) {}
+  private readonly logger = new Logger(SignalingService.name);
+
+  constructor(
+    private readonly roomsService: RoomsService,
+    private readonly chatService: ChatService,
+  ) {}
 
   async join(roomId: string, peerId: string, displayName: string) {
     const room = await this.roomsService.getOrCreateRoom(roomId);
@@ -48,8 +54,7 @@ export class SignalingService {
   }
 
   getPeer(roomId: string, peerId: string): Peer {
-    const room = this.getRoom(roomId);
-    const peer = room.peers.get(peerId);
+    const peer = this.roomsService.getPeer(roomId, peerId);
 
     if (!peer) {
       throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
@@ -190,6 +195,14 @@ export class SignalingService {
 
     if (room.isEmpty()) {
       this.roomsService.closeRoom(roomId);
+      this.chatService
+        .deleteRoomHistory(roomId)
+        .catch((error) =>
+          this.logger.error(
+            `Failed to delete chat history for room ${roomId}`,
+            error,
+          ),
+        );
     }
   }
 
