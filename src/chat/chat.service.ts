@@ -26,8 +26,9 @@ export class ChatService {
     return { ...message, id: id as string };
   }
 
-  async getHistory(roomId: string): Promise<ChatMessage[]> {
-    const entries = await this.redis.xrange(this.streamKey(roomId), '-', '+');
+  async getHistory(roomId: string, afterId?: string): Promise<ChatMessage[]> {
+    const start = afterId ? `(${afterId}` : '-';
+    const entries = await this.redis.xrange(this.streamKey(roomId), start, '+');
 
     return entries.map(([id, fields]) => ({
       id,

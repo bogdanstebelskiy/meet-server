@@ -10,7 +10,7 @@ import { ChatService } from './chat.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RequireSocketContext } from '../signaling/decorators/socket-context.decorator';
 import { WsExceptionFilter } from '../common/ws-exception.filter';
-import type { SendChatMessagePayload } from './payloads';
+import type { GetChatHistoryPayload, SendChatMessagePayload } from './payloads';
 import type { SocketContext } from '../signaling/types';
 
 @WebSocketGateway({ cors: true })
@@ -48,8 +48,11 @@ export class ChatGateway {
   }
 
   @SubscribeMessage('getChatHistory')
-  async getChatHistory(@RequireSocketContext() { roomId }: SocketContext) {
-    const messages = await this.chatService.getHistory(roomId);
+  async getChatHistory(
+    @RequireSocketContext() { roomId }: SocketContext,
+    @MessageBody() { afterId }: GetChatHistoryPayload,
+  ) {
+    const messages = await this.chatService.getHistory(roomId, afterId);
 
     return { messages };
   }

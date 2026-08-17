@@ -92,13 +92,24 @@ describe('ChatGateway', () => {
       ];
       chatService.getHistory.mockResolvedValue(messages);
 
-      const result = await gateway.getChatHistory({
-        roomId: 'room-1',
-        peerId: 'socket-1',
-      });
+      const result = await gateway.getChatHistory(
+        { roomId: 'room-1', peerId: 'socket-1' },
+        {},
+      );
 
-      expect(chatService.getHistory).toHaveBeenCalledWith('room-1');
+      expect(chatService.getHistory).toHaveBeenCalledWith('room-1', undefined);
       expect(result).toEqual({ messages });
+    });
+
+    it('passes afterId through to resume from the last seen message', async () => {
+      chatService.getHistory.mockResolvedValue([]);
+
+      await gateway.getChatHistory(
+        { roomId: 'room-1', peerId: 'socket-1' },
+        { afterId: '5-0' },
+      );
+
+      expect(chatService.getHistory).toHaveBeenCalledWith('room-1', '5-0');
     });
   });
 });
