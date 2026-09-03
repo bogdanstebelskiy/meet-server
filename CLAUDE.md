@@ -4,22 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-```bash
-npm run build          # nest build
-npm run start:dev      # watch mode
-npm run lint           # eslint --fix on src/apps/libs/test
-npm run format         # prettier --write on src/test
+This is a Nest CLI monorepo (`nest-cli.json` has `"monorepo": true`): `apps/realtime` (today's whole app — signaling, rooms, chat, redis, sfu worker pool), `apps/sfu` (empty skeleton — mediasoup state moves here in issue #16), and `libs/media-contracts` (empty shell — REST DTOs land here alongside #16). See `CONTEXT.md` and `docs/adr/0001-separate-sfu-and-realtime-apps.md` for why.
 
-npm run test           # unit tests (test/unit/**/*.spec.ts), via root jest config in package.json
+```bash
+npm run build          # nest build (bare command defaults to the "realtime" project)
+npx nest build sfu     # build a specific app explicitly
+npm run start:dev      # watch mode, defaults to "realtime"
+npm run lint           # eslint --fix on apps/libs
+npm run format         # prettier --write on apps/libs
+
+npm run test           # unit tests (apps/**/*.spec.ts, libs/**/*.spec.ts), via root jest config in package.json
 npm run test:watch
 npm run test:cov
-npm run test:e2e       # e2e tests (test/**/*.e2e-spec.ts), via test/jest-e2e.json — spins up a real Nest app + real mediasoup workers + real socket.io clients, no browser
+npm run test:e2e       # e2e tests (apps/realtime/test/**/*.e2e-spec.ts), via apps/realtime/test/jest-e2e.json — spins up a real Nest app + real mediasoup workers + real socket.io clients, no browser
+npm run test:e2e:sfu   # e2e tests for apps/sfu, via apps/sfu/test/jest-e2e.json — currently just the default Nest scaffold smoke test; real coverage lands with #16
 ```
 
-Run a single unit test file: `npx jest test/unit/rooms/rooms.service.spec.ts`
-Run a single e2e test file: `npx jest --config ./test/jest-e2e.json test/signaling.e2e-spec.ts`
+Run a single unit test file: `npx jest apps/realtime/test/unit/rooms/rooms.service.spec.ts`
+Run a single e2e test file: `npx jest --config ./apps/realtime/test/jest-e2e.json apps/realtime/test/signaling.e2e-spec.ts`
 
-Unit and e2e tests use separate Jest configs (root `package.json` vs `test/jest-e2e.json`) with different `testRegex`/`roots` — don't expect `npm test` to pick up `*.e2e-spec.ts` files or vice versa.
+Unit and e2e tests use separate Jest configs (root `package.json` vs each app's `test/jest-e2e.json`) with different `testRegex`/`roots` — don't expect `npm test` to pick up `*.e2e-spec.ts` files or vice versa. Each app carries its own `test/jest-e2e.json`.
 
 ## Architecture
 
@@ -35,15 +39,15 @@ Full design reasoning (why the module split, why least-loaded over round-robin, 
 
 ### Cross-cutting
 
-- **WS exception handling**: `src/common/ws-exception.filter.ts` re-wraps `HttpException`s as `WsException` so their real message reaches the client (Nest's default WS error handling only preserves messages for `WsException` itself). `@nestjs/websockets` has no global WS filter support, so every gateway must apply `@UseFilters(new WsExceptionFilter())` itself — it will silently not apply otherwise.
+- **WS exception handling**: `apps/realtime/src/common/ws-exception.filter.ts` re-wraps `HttpException`s as `WsException` so their real message reaches the client (Nest's default WS error handling only preserves messages for `WsException` itself). `@nestjs/websockets` has no global WS filter support, so every gateway must apply `@UseFilters(new WsExceptionFilter())` itself — it will silently not apply otherwise.
 - **Ack payloads**: every WS handler must return a non-nil object. `@nestjs/platform-socket.io` silently drops `undefined`/`null` handler returns, so a client awaiting the ack hangs forever with no error.
-- **Local network testing**: `sfu/config`'s `webRtcAnnouncedAddress` must be a real LAN IP (not `0.0.0.0`/`127.0.0.1`) for cross-device/browser testing to work. `main.ts` loads HTTPS certs from `certificates/` (mkcert-generated, gitignored) when present, since phone/LAN testing needs TLS to avoid mixed-content WS blocking.
+- **Local network testing**: `apps/realtime/src/sfu/config`'s `webRtcAnnouncedAddress` must be a real LAN IP (not `0.0.0.0`/`127.0.0.1`) for cross-device/browser testing to work. `main.ts` loads HTTPS certs from `certificates/` (mkcert-generated, gitignored) when present, since phone/LAN testing needs TLS to avoid mixed-content WS blocking.
 
 ### Test strategy
 
 Three tiers, matched to what each can actually prove:
-- **Unit** (`test/unit`, Jest root config): worker-picker, room join/leave state machine, message dispatch — all mockable, no real mediasoup process.
-- **E2E** (`test/*.e2e-spec.ts`, `test/jest-e2e.json`): real Nest app, real mediasoup workers, real socket.io clients; fabricated but syntactically valid `dtlsParameters` stand in for a browser's ICE/DTLS since the signaling RPCs don't block on actual connectivity. This tier has caught every non-obvious bug recorded in `docs/sfu-signaling-design.md`.
+- **Unit** (`apps/realtime/test/unit`, Jest root config): worker-picker, room join/leave state machine, message dispatch — all mockable, no real mediasoup process.
+- **E2E** (`apps/realtime/test/*.e2e-spec.ts`, `apps/realtime/test/jest-e2e.json`): real Nest app, real mediasoup workers, real socket.io clients; fabricated but syntactically valid `dtlsParameters` stand in for a browser's ICE/DTLS since the signaling RPCs don't block on actual connectivity. This tier has caught every non-obvious bug recorded in `docs/sfu-signaling-design.md`.
 - **Browser e2e**: not implemented (no client in this repo) — would be the only tier proving real ICE/DTLS negotiation and multi-tab UX.
 
 ## Agent skills

@@ -4,7 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 function loadHttpsOptions() {
-  const certDir = path.join(__dirname, '..', 'certificates');
+  // __dirname is dist/apps/realtime at runtime (nest build's monorepo
+  // output layout), three levels below the repo root where certificates/
+  // actually lives.
+  const certDir = path.join(__dirname, '..', '..', '..', 'certificates');
   const keyPath = path.join(certDir, 'localhost-key.pem');
   const certPath = path.join(certDir, 'localhost.pem');
 

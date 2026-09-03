@@ -20,6 +20,14 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@app/media-contracts": [
+        "libs/media-contracts/src"
+      ],
+      "@app/media-contracts/*": [
+        "libs/media-contracts/src/*"
+      ]
+    }
   }
 }
