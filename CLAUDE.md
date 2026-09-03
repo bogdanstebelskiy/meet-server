@@ -25,6 +25,20 @@ Run a single e2e test file: `npx jest --config ./apps/realtime/test/jest-e2e.jso
 
 Unit and e2e tests use separate Jest configs (root `package.json` vs each app's `test/jest-e2e.json`) with different `testRegex`/`roots` — don't expect `npm test` to pick up `*.e2e-spec.ts` files or vice versa. Each app carries its own `test/jest-e2e.json`.
 
+### Docker
+
+Each app has its own multi-stage `Dockerfile` (`apps/realtime/Dockerfile`, `apps/sfu/Dockerfile`), proving the two apps are independently buildable and deployable per `docs/adr/0001-separate-sfu-and-realtime-apps.md`. Both share the root `package.json`/`libs/`, so the build context is the repo root, not the app directory:
+
+```bash
+docker build -f apps/realtime/Dockerfile -t meet-realtime .
+docker build -f apps/sfu/Dockerfile -t meet-sfu .
+
+docker run -p 3000:3000 -e REDIS_URL=redis://<host>:6379 meet-realtime
+docker run -p 3000:3000 meet-sfu
+```
+
+`apps/sfu`'s image is a functional no-op until #16 (mediasoup state migration) lands — it only proves the packaging mechanics work. `apps/realtime` still needs a reachable Redis at `REDIS_URL` for chat history; without one it still boots and serves HTTP, but logs `ioredis` connection errors in the background.
+
 ## Architecture
 
 This is a mediasoup SFU (selective forwarding unit) signaling server for video calls, built on NestJS with socket.io gateways. The reference implementation is [mediasoup-demo v3](https://github.com/versatica/mediasoup-demo/tree/v3); this repo maps that reference onto three NestJS modules split by *rate of change*, not by layer:
