@@ -1,0 +1,234 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import type {
+  DtlsParameters,
+  MediaKind,
+  RtpCapabilities,
+  RtpParameters,
+} from 'mediasoup/types';
+import { TRANSPORT_DIRECTIONS } from '@app/media-contracts';
+import type { TransportDirection } from '@app/media-contracts';
+import { WorkerPoolService } from '../workers/worker-pool.service';
+import { WebRtcConfigService } from '../config/webrtc-config.service';
+import { mediaCodecs } from '../config';
+import { MediaRoom } from './entities/media-room.entity';
+import { MediaPeer } from './entities/media-peer.entity';
+
+@Injectable()
+export class MediaRoomsService {
+  private readonly rooms = new Map<string, MediaRoom>();
+  // Dedupes concurrent getOrCreateRoom calls for a new roomId, so two
+  // concurrent requests for a brand-new room don't each create their own
+  // router.
+  private readonly pendingRooms = new Map<string, Promise<MediaRoom>>();
+
+  constructor(
+    private readonly workerPool: WorkerPoolService,
+    private readonly webRtcConfig: WebRtcConfigService,
+  ) {}
+
+  async getOrCreateRoom(roomId: string): Promise<MediaRoom> {
+    const existing = this.rooms.get(roomId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const pending = this.pendingRooms.get(roomId);
+
+    if (pending) {
+      return pending;
+    }
+
+    const creation = this.createRoom(roomId).finally(() =>
+      this.pendingRooms.delete(roomId),
+    );
+    this.pendingRooms.set(roomId, creation);
+
+    return creation;
+  }
+
+  private async createRoom(roomId: string): Promise<MediaRoom> {
+    const worker = this.workerPool.getWorker();
+    const router = await worker.createRouter({ mediaCodecs });
+    this.workerPool.trackRouterCreated(worker);
+
+    const room = new MediaRoom(roomId, router, worker);
+    this.rooms.set(roomId, room);
+
+    return room;
+  }
+
+  getRoom(roomId: string): MediaRoom {
+    const room = this.rooms.get(roomId);
+
+    if (!room) {
+      throw new NotFoundException(`MediaRoom ${roomId} not found`);
+    }
+
+    return room;
+  }
+
+  getPeer(roomId: string, peerId: string): MediaPeer {
+    const peer = this.getRoom(roomId).getPeer(peerId);
+
+    if (!peer) {
+      throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
+    }
+
+    return peer;
+  }
+
+  async createTransport(
+    roomId: string,
+    peerId: string,
+    direction: TransportDirection,
+  ) {
+    const room = this.getRoom(roomId);
+    const peer = room.getOrCreatePeer(peerId);
+
+    const transport = await room.router.createWebRtcTransport({
+      listenInfos: [
+        {
+          protocol: 'udp',
+          ip: '0.0.0.0',
+          announcedAddress: this.webRtcConfig.announcedAddress,
+          portRange: this.webRtcConfig.portRange,
+        },
+        {
+          protocol: 'tcp',
+          ip: '0.0.0.0',
+          announcedAddress: this.webRtcConfig.announcedAddress,
+          portRange: this.webRtcConfig.portRange,
+        },
+      ],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+    });
+
+    if (direction === TRANSPORT_DIRECTIONS.SEND) {
+      // A retried createTransport call (client timeout, reconnect) must not
+      // leak the previous transport's ports/producers.
+      peer.sendTransport?.close();
+      peer.sendTransport = transport;
+    } else {
+      peer.recvTransport?.close();
+      peer.recvTransport = transport;
+    }
+
+    return transport;
+  }
+
+  async connectTransport(
+    roomId: string,
+    peerId: string,
+    transportId: string,
+    dtlsParameters: DtlsParameters,
+  ) {
+    const transport = this.findTransport(roomId, peerId, transportId);
+
+    await transport.connect({ dtlsParameters });
+  }
+
+  async produce(
+    roomId: string,
+    peerId: string,
+    transportId: string,
+    kind: MediaKind,
+    rtpParameters: RtpParameters,
+  ) {
+    const peer = this.getPeer(roomId, peerId);
+
+    if (peer.sendTransport?.id !== transportId) {
+      throw new NotFoundException(
+        `Send transport ${transportId} not found for peer ${peerId}`,
+      );
+    }
+
+    const producer = await peer.sendTransport.produce({ kind, rtpParameters });
+    peer.producers.set(producer.id, producer);
+
+    return producer;
+  }
+
+  async consume(
+    roomId: string,
+    peerId: string,
+    producerId: string,
+    rtpCapabilities: RtpCapabilities,
+  ) {
+    const room = this.getRoom(roomId);
+    const peer = this.getPeer(roomId, peerId);
+
+    if (!room.router.canConsume({ producerId, rtpCapabilities })) {
+      throw new NotFoundException(`Cannot consume producer ${producerId}`);
+    }
+
+    if (!peer.recvTransport) {
+      throw new NotFoundException(`Peer ${peerId} has no recv transport`);
+    }
+
+    const consumer = await peer.recvTransport.consume({
+      producerId,
+      rtpCapabilities,
+      paused: true,
+    });
+    peer.consumers.set(consumer.id, consumer);
+
+    return consumer;
+  }
+
+  async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
+    const peer = this.getPeer(roomId, peerId);
+    const consumer = peer.consumers.get(consumerId);
+
+    if (!consumer) {
+      throw new NotFoundException(
+        `Consumer ${consumerId} not found for peer ${peerId}`,
+      );
+    }
+
+    await consumer.resume();
+  }
+
+  async pauseProducer(roomId: string, peerId: string, producerId: string) {
+    const producer = this.findProducer(roomId, peerId, producerId);
+
+    await producer.pause();
+  }
+
+  async resumeProducer(roomId: string, peerId: string, producerId: string) {
+    const producer = this.findProducer(roomId, peerId, producerId);
+
+    await producer.resume();
+  }
+
+  private findProducer(roomId: string, peerId: string, producerId: string) {
+    const peer = this.getPeer(roomId, peerId);
+    const producer = peer.producers.get(producerId);
+
+    if (!producer) {
+      throw new NotFoundException(
+        `Producer ${producerId} not found for peer ${peerId}`,
+      );
+    }
+
+    return producer;
+  }
+
+  private findTransport(roomId: string, peerId: string, transportId: string) {
+    const peer = this.getPeer(roomId, peerId);
+
+    if (peer.sendTransport?.id === transportId) {
+      return peer.sendTransport;
+    }
+
+    if (peer.recvTransport?.id === transportId) {
+      return peer.recvTransport;
+    }
+
+    throw new NotFoundException(
+      `Transport ${transportId} not found for peer ${peerId}`,
+    );
+  }
+}

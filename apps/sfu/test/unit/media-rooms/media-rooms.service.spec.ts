@@ -1,0 +1,318 @@
+import { NotFoundException } from '@nestjs/common';
+import { MediaRoomsService } from '../../../src/media-rooms/media-rooms.service';
+import { WorkerPoolService } from '../../../src/workers/worker-pool.service';
+import { WebRtcConfigService } from '../../../src/config/webrtc-config.service';
+
+describe('MediaRoomsService', () => {
+  let service: MediaRoomsService;
+  let workerPool: {
+    getWorker: jest.Mock;
+    trackRouterCreated: jest.Mock;
+    trackRouterClosed: jest.Mock;
+  };
+  let webRtcConfig: { announcedAddress: string; portRange: unknown };
+  let router: {
+    rtpCapabilities: unknown;
+    createWebRtcTransport: jest.Mock;
+    canConsume: jest.Mock;
+  };
+
+  const createFakeWorker = () => ({ createRouter: jest.fn() });
+
+  beforeEach(() => {
+    router = {
+      rtpCapabilities: { codecs: [] },
+      createWebRtcTransport: jest.fn(),
+      canConsume: jest.fn().mockReturnValue(true),
+    };
+
+    workerPool = {
+      getWorker: jest.fn(),
+      trackRouterCreated: jest.fn(),
+      trackRouterClosed: jest.fn(),
+    };
+
+    webRtcConfig = {
+      announcedAddress: '127.0.0.1',
+      portRange: { min: 40000, max: 49999 },
+    };
+
+    service = new MediaRoomsService(
+      workerPool as unknown as WorkerPoolService,
+      webRtcConfig as unknown as WebRtcConfigService,
+    );
+  });
+
+  function stubWorkerCreatingRouter() {
+    const worker = createFakeWorker();
+    worker.createRouter.mockResolvedValue(router);
+    workerPool.getWorker.mockReturnValue(worker);
+
+    return worker;
+  }
+
+  describe('getOrCreateRoom', () => {
+    it('creates a room via a worker from the pool and reports the router back', async () => {
+      const worker = stubWorkerCreatingRouter();
+
+      const room = await service.getOrCreateRoom('room-1');
+
+      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(worker.createRouter).toHaveBeenCalledWith({
+        mediaCodecs: expect.any(Array),
+      });
+      expect(workerPool.trackRouterCreated).toHaveBeenCalledWith(worker);
+      expect(room.id).toBe('room-1');
+      expect(room.router).toBe(router);
+    });
+
+    it('returns the cached room on subsequent calls instead of creating another router', async () => {
+      const worker = stubWorkerCreatingRouter();
+
+      const first = await service.getOrCreateRoom('room-1');
+      const second = await service.getOrCreateRoom('room-1');
+
+      expect(first).toBe(second);
+      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(worker.createRouter).toHaveBeenCalledTimes(1);
+    });
+
+    it('dedupes concurrent creation for the same brand-new room (no leaked router)', async () => {
+      const worker = createFakeWorker();
+      let resolveRouter!: (value: unknown) => void;
+      worker.createRouter.mockReturnValue(
+        new Promise((resolve) => {
+          resolveRouter = resolve;
+        }),
+      );
+      workerPool.getWorker.mockReturnValue(worker);
+
+      const call1 = service.getOrCreateRoom('room-1');
+      const call2 = service.getOrCreateRoom('room-1');
+
+      resolveRouter(router);
+      const [room1, room2] = await Promise.all([call1, call2]);
+
+      expect(room1).toBe(room2);
+      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(worker.createRouter).toHaveBeenCalledTimes(1);
+      expect(workerPool.trackRouterCreated).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getRoom / getPeer', () => {
+    it('throws NotFoundException for an unknown room', () => {
+      expect(() => service.getRoom('missing')).toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException for an unknown peer in a known room', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+
+      expect(() => service.getPeer('room-1', 'missing')).toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('createTransport', () => {
+    it('creates and assigns sendTransport for direction "send", lazily creating the peer', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+      const transport = { id: 't1' };
+      router.createWebRtcTransport.mockResolvedValue(transport);
+
+      const result = await service.createTransport('room-1', 'peer-1', 'send');
+
+      expect(result).toBe(transport);
+      expect(service.getPeer('room-1', 'peer-1').sendTransport).toBe(transport);
+      expect(router.createWebRtcTransport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          listenInfos: expect.arrayContaining([
+            expect.objectContaining({ announcedAddress: '127.0.0.1' }),
+          ]),
+        }),
+      );
+    });
+
+    it('creates and assigns recvTransport for direction "recv"', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+      const transport = { id: 't2' };
+      router.createWebRtcTransport.mockResolvedValue(transport);
+
+      await service.createTransport('room-1', 'peer-1', 'recv');
+
+      expect(service.getPeer('room-1', 'peer-1').recvTransport).toBe(transport);
+    });
+  });
+
+  describe('connectTransport', () => {
+    it('connects the matching transport by id', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const transport = { id: 't1', connect: jest.fn() };
+      peer.sendTransport = transport as any;
+
+      await service.connectTransport('room-1', 'peer-1', 't1', {
+        role: 'client',
+      } as any);
+
+      expect(transport.connect).toHaveBeenCalledWith({
+        dtlsParameters: { role: 'client' },
+      });
+    });
+
+    it('throws NotFoundException when transportId matches neither send nor recv transport', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      await expect(
+        service.connectTransport('room-1', 'peer-1', 'unknown', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('produce', () => {
+    it('produces on the peer send transport and stores the producer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const producer = { id: 'prod-1' };
+      const transport = {
+        id: 't1',
+        produce: jest.fn().mockResolvedValue(producer),
+      };
+      peer.sendTransport = transport as any;
+
+      const result = await service.produce(
+        'room-1',
+        'peer-1',
+        't1',
+        'audio',
+        {} as any,
+      );
+
+      expect(result).toBe(producer);
+      expect(peer.producers.get('prod-1')).toBe(producer);
+    });
+
+    it('throws NotFoundException when the peer never created a send transport', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      await expect(
+        service.produce('room-1', 'peer-1', 't1', 'audio', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('consume', () => {
+    it('consumes paused on the peer recv transport and stores the consumer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const consumer = { id: 'cons-1' };
+      const transport = {
+        id: 't2',
+        consume: jest.fn().mockResolvedValue(consumer),
+      };
+      peer.recvTransport = transport as any;
+
+      const result = await service.consume('room-1', 'peer-1', 'prod-1', {});
+
+      expect(result).toBe(consumer);
+      expect(transport.consume).toHaveBeenCalledWith({
+        producerId: 'prod-1',
+        rtpCapabilities: {},
+        paused: true,
+      });
+      expect(peer.consumers.get('cons-1')).toBe(consumer);
+    });
+
+    it('throws NotFoundException when the router says the capabilities cannot consume', async () => {
+      stubWorkerCreatingRouter();
+      router.canConsume.mockReturnValue(false);
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      peer.recvTransport = { consume: jest.fn() } as any;
+
+      await expect(
+        service.consume('room-1', 'peer-1', 'prod-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when the peer has no recv transport yet', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      await expect(
+        service.consume('room-1', 'peer-1', 'prod-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('resumeConsumer', () => {
+    it('resumes a known consumer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const consumer = { resume: jest.fn() };
+      peer.consumers.set('cons-1', consumer as any);
+
+      await service.resumeConsumer('room-1', 'peer-1', 'cons-1');
+
+      expect(consumer.resume).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws NotFoundException for an unknown consumer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      await expect(
+        service.resumeConsumer('room-1', 'peer-1', 'missing'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('pauseProducer / resumeProducer', () => {
+    it('pauses a known producer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const producer = { pause: jest.fn(), resume: jest.fn() };
+      peer.producers.set('prod-1', producer as any);
+
+      await service.pauseProducer('room-1', 'peer-1', 'prod-1');
+
+      expect(producer.pause).toHaveBeenCalledTimes(1);
+    });
+
+    it('resumes a known producer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const producer = { pause: jest.fn(), resume: jest.fn() };
+      peer.producers.set('prod-1', producer as any);
+
+      await service.resumeProducer('room-1', 'peer-1', 'prod-1');
+
+      expect(producer.resume).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws NotFoundException for an unknown producer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      await expect(
+        service.pauseProducer('room-1', 'peer-1', 'missing'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+});
