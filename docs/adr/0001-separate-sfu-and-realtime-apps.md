@@ -1,0 +1,13 @@
+# Separate `sfu` and `realtime` into independently deployable apps
+
+Issue #4 needs SFU and signaling to scale independently (separate replica counts, separate deploys), which the current single Nest app can't do. We're splitting into two apps, `sfu` and `realtime`, using Nest CLI's built-in monorepo mode (one repo, one `package.json`/`tsconfig`, `libs/*` for shared code) rather than separate git repos or npm/pnpm workspaces — the explicit goal is sharing mediasoup-derived types (transport options, RTP capabilities, etc.) as plain TS imports with no publish step, which both alternatives would cost: separate repos would need a versioned/published package for that sharing, and npm/pnpm workspaces would need either a build step or TS project references for the same result, plus manual version-pinning across manifests to avoid duplicate `@nestjs/*` instances.
+
+Communication between them is REST, not gRPC — gRPC's schema/codegen overhead isn't justified for a two-service internal boundary, and REST keeps the request/response shape close to the existing in-process method calls it's replacing.
+
+`rooms`' mediasoup-object-holding state (`Router`, `WebRtcTransport`, `Producer`, `Consumer`) moves into `sfu`, keyed by room/peer id; `realtime` keeps only membership (who's in a room, display names, producer ids) and calls `sfu` over REST for every mediasoup operation. See `CONTEXT.md` for the resulting **Room** (realtime) / **MediaRoom** (sfu) split. The REST request/response DTOs for that boundary live in `libs/media-contracts` — named for the domain concern (media/mediasoup-shaped wire data), not the owning app, since both apps import it.
+
+## Consequences
+
+This only creates the process boundary — it does not by itself make `sfu` horizontally scalable. `sfu` is stateful per room (a `MediaRoom`'s `Router` lives in exactly one instance's memory), so multiple `sfu` replicas need sticky room→instance routing (issues #7, #8) before they're safe to run behind a load balancer. Each `sfu` replica will also need its own real, reachable address for WebRTC ICE (not a shared LB VIP) — an infra-level decision (`hostNetwork`/Downward API, or a TURN relay in front) deferred until that's actually being deployed. `webRtcAnnouncedAddress` and the port range move from a compiled-in constant to env-driven config now, as the one piece of that groundwork that belongs in this change.
+
+There is no authentication between `realtime` and `sfu` in this change — both apps trust whatever network they're deployed on. Deliberately deferred, not an oversight: revisit once this boundary crosses a network that isn't fully trusted (e.g. a shared/public cloud VPC without network policies), by which point a shared secret or mTLS between the two apps should be added.
