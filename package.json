@@ -21,12 +21,14 @@
     "test:e2e:sfu": "jest --config ./apps/sfu/test/jest-e2e.json"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.29",
     "@nestjs/websockets": "^11.1.29",
+    "axios": "^1.20.0",
     "ioredis": "^6.0.0",
     "mediasoup": "^3.24.2",
     "reflect-metadata": "^0.2.2",
