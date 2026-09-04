@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { isAxiosError, type AxiosResponse } from 'axios';
+import { buildMediaRoomPath, MEDIA_ROOM_ROUTES } from '@app/media-contracts';
 import type {
   CloseRoomResponse,
   ConnectTransportResponse,
@@ -32,9 +33,11 @@ export class SfuClientService {
   constructor(private readonly httpService: HttpService) {}
 
   createOrGetMediaRoom(roomId: string): Promise<MediaRoomResponse> {
-    return this.request(() =>
-      this.httpService.put<MediaRoomResponse>(`/media-rooms/${roomId}`),
-    );
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.createOrGetRoom, {
+      roomId,
+    });
+
+    return this.request(() => this.httpService.put<MediaRoomResponse>(path));
   }
 
   createTransport(
@@ -42,11 +45,13 @@ export class SfuClientService {
     peerId: string,
     direction: TransportDirection,
   ): Promise<CreateTransportResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.createTransport, {
+      roomId,
+      peerId,
+    });
+
     return this.request(() =>
-      this.httpService.post<CreateTransportResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/transports`,
-        { direction },
-      ),
+      this.httpService.post<CreateTransportResponse>(path, { direction }),
     );
   }
 
@@ -56,11 +61,16 @@ export class SfuClientService {
     transportId: string,
     dtlsParameters: DtlsParameters,
   ): Promise<ConnectTransportResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.connectTransport, {
+      roomId,
+      peerId,
+      transportId,
+    });
+
     return this.request(() =>
-      this.httpService.post<ConnectTransportResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/transports/${transportId}/connect`,
-        { dtlsParameters },
-      ),
+      this.httpService.post<ConnectTransportResponse>(path, {
+        dtlsParameters,
+      }),
     );
   }
 
@@ -71,11 +81,14 @@ export class SfuClientService {
     kind: MediaKind,
     rtpParameters: RtpParameters,
   ): Promise<ProduceResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.produce, {
+      roomId,
+      peerId,
+      transportId,
+    });
+
     return this.request(() =>
-      this.httpService.post<ProduceResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/transports/${transportId}/produce`,
-        { kind, rtpParameters },
-      ),
+      this.httpService.post<ProduceResponse>(path, { kind, rtpParameters }),
     );
   }
 
@@ -85,11 +98,16 @@ export class SfuClientService {
     producerId: string,
     rtpCapabilities: RtpCapabilities,
   ): Promise<ConsumeResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.consume, {
+      roomId,
+      peerId,
+    });
+
     return this.request(() =>
-      this.httpService.post<ConsumeResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/consumers`,
-        { producerId, rtpCapabilities },
-      ),
+      this.httpService.post<ConsumeResponse>(path, {
+        producerId,
+        rtpCapabilities,
+      }),
     );
   }
 
@@ -98,10 +116,14 @@ export class SfuClientService {
     peerId: string,
     consumerId: string,
   ): Promise<ResumeConsumerResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.resumeConsumer, {
+      roomId,
+      peerId,
+      consumerId,
+    });
+
     return this.request(() =>
-      this.httpService.post<ResumeConsumerResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/consumers/${consumerId}/resume`,
-      ),
+      this.httpService.post<ResumeConsumerResponse>(path),
     );
   }
 
@@ -110,10 +132,14 @@ export class SfuClientService {
     peerId: string,
     producerId: string,
   ): Promise<PauseProducerResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.pauseProducer, {
+      roomId,
+      peerId,
+      producerId,
+    });
+
     return this.request(() =>
-      this.httpService.post<PauseProducerResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/producers/${producerId}/pause`,
-      ),
+      this.httpService.post<PauseProducerResponse>(path),
     );
   }
 
@@ -122,25 +148,32 @@ export class SfuClientService {
     peerId: string,
     producerId: string,
   ): Promise<ResumeProducerResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.resumeProducer, {
+      roomId,
+      peerId,
+      producerId,
+    });
+
     return this.request(() =>
-      this.httpService.post<ResumeProducerResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}/producers/${producerId}/resume`,
-      ),
+      this.httpService.post<ResumeProducerResponse>(path),
     );
   }
 
   removePeer(roomId: string, peerId: string): Promise<RemovePeerResponse> {
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.removePeer, {
+      roomId,
+      peerId,
+    });
+
     return this.request(() =>
-      this.httpService.delete<RemovePeerResponse>(
-        `/media-rooms/${roomId}/peers/${peerId}`,
-      ),
+      this.httpService.delete<RemovePeerResponse>(path),
     );
   }
 
   closeRoom(roomId: string): Promise<CloseRoomResponse> {
-    return this.request(() =>
-      this.httpService.delete<CloseRoomResponse>(`/media-rooms/${roomId}`),
-    );
+    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.closeRoom, { roomId });
+
+    return this.request(() => this.httpService.delete<CloseRoomResponse>(path));
   }
 
   // Reconstructs a real HttpException from apps/sfu's default Nest error
@@ -153,27 +186,28 @@ export class SfuClientService {
     call: () => Observable<AxiosResponse<T>>,
   ): Promise<T> {
     try {
-      const response = await firstValueFrom(call());
+      const observable = call();
+      const response = await firstValueFrom(observable);
 
       return response.data;
     } catch (error) {
-      if (isAxiosError(error)) {
-        if (error.response) {
-          const body = error.response.data as HttpExceptionBody;
+      if (!isAxiosError(error)) {
+        throw error;
+      }
 
-          throw new HttpException(
-            body.message ?? error.message,
-            body.statusCode ?? error.response.status,
-          );
-        }
-
+      if (!error.response) {
         throw new HttpException(
           `apps/sfu is unreachable: ${error.message}`,
           HttpStatus.SERVICE_UNAVAILABLE,
         );
       }
 
-      throw error;
+      const body = error.response.data as HttpExceptionBody;
+
+      throw new HttpException(
+        body.message ?? error.message,
+        body.statusCode ?? error.response.status,
+      );
     }
   }
 }

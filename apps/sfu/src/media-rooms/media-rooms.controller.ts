@@ -7,6 +7,7 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { MEDIA_ROOM_ROUTES, MEDIA_ROOMS_BASE_PATH } from '@app/media-contracts';
 import type {
   CloseRoomResponse,
   ConnectTransportRequest,
@@ -25,11 +26,11 @@ import type {
 } from '@app/media-contracts';
 import { MediaRoomsService } from './media-rooms.service';
 
-@Controller('media-rooms')
+@Controller(MEDIA_ROOMS_BASE_PATH)
 export class MediaRoomsController {
   constructor(private readonly mediaRoomsService: MediaRoomsService) {}
 
-  @Put(':roomId')
+  @Put(MEDIA_ROOM_ROUTES.createOrGetRoom)
   async createOrGetRoom(
     @Param('roomId') roomId: string,
   ): Promise<MediaRoomResponse> {
@@ -38,7 +39,7 @@ export class MediaRoomsController {
     return { roomId: room.id, rtpCapabilities: room.router.rtpCapabilities };
   }
 
-  @Post(':roomId/peers/:peerId/transports')
+  @Post(MEDIA_ROOM_ROUTES.createTransport)
   async createTransport(
     @Param('roomId') roomId: string,
     @Param('peerId') peerId: string,
@@ -58,7 +59,7 @@ export class MediaRoomsController {
     };
   }
 
-  @Post(':roomId/peers/:peerId/transports/:transportId/connect')
+  @Post(MEDIA_ROOM_ROUTES.connectTransport)
   @HttpCode(200)
   async connectTransport(
     @Param('roomId') roomId: string,
@@ -76,7 +77,7 @@ export class MediaRoomsController {
     return { connected: true };
   }
 
-  @Post(':roomId/peers/:peerId/transports/:transportId/produce')
+  @Post(MEDIA_ROOM_ROUTES.produce)
   async produce(
     @Param('roomId') roomId: string,
     @Param('peerId') peerId: string,
@@ -94,7 +95,7 @@ export class MediaRoomsController {
     return { id: producer.id };
   }
 
-  @Post(':roomId/peers/:peerId/consumers')
+  @Post(MEDIA_ROOM_ROUTES.consume)
   async consume(
     @Param('roomId') roomId: string,
     @Param('peerId') peerId: string,
@@ -116,7 +117,7 @@ export class MediaRoomsController {
     };
   }
 
-  @Post(':roomId/peers/:peerId/consumers/:consumerId/resume')
+  @Post(MEDIA_ROOM_ROUTES.resumeConsumer)
   @HttpCode(200)
   async resumeConsumer(
     @Param('roomId') roomId: string,
@@ -128,7 +129,7 @@ export class MediaRoomsController {
     return { resumed: true };
   }
 
-  @Post(':roomId/peers/:peerId/producers/:producerId/pause')
+  @Post(MEDIA_ROOM_ROUTES.pauseProducer)
   @HttpCode(200)
   async pauseProducer(
     @Param('roomId') roomId: string,
@@ -140,7 +141,7 @@ export class MediaRoomsController {
     return { paused: true };
   }
 
-  @Post(':roomId/peers/:peerId/producers/:producerId/resume')
+  @Post(MEDIA_ROOM_ROUTES.resumeProducer)
   @HttpCode(200)
   async resumeProducer(
     @Param('roomId') roomId: string,
@@ -152,7 +153,7 @@ export class MediaRoomsController {
     return { resumed: true };
   }
 
-  @Delete(':roomId/peers/:peerId')
+  @Delete(MEDIA_ROOM_ROUTES.removePeer)
   @HttpCode(200)
   removePeer(
     @Param('roomId') roomId: string,
@@ -163,7 +164,7 @@ export class MediaRoomsController {
     return { removed: true };
   }
 
-  @Delete(':roomId')
+  @Delete(MEDIA_ROOM_ROUTES.closeRoom)
   @HttpCode(200)
   closeRoom(@Param('roomId') roomId: string): CloseRoomResponse {
     const closed = this.mediaRoomsService.closeRoom(roomId);
