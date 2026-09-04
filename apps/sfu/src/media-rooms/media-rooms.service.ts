@@ -130,6 +130,14 @@ export class MediaRoomsService {
       throw error;
     }
 
+    // A concurrent removePeer can delete this peer while the transport was
+    // being created - the transport must not attach to an orphaned peer no
+    // one holds a reference to.
+    if (room.getPeer(peerId) !== peer) {
+      transport.close();
+      throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
+    }
+
     if (direction === TRANSPORT_DIRECTIONS.SEND) {
       // A retried createTransport call (client timeout, reconnect) must not
       // leak the previous transport's ports/producers.
@@ -230,17 +238,28 @@ export class MediaRoomsService {
     await producer.resume();
   }
 
+  // A double-leave or a race against closeRoom can call this against an
+  // already-unknown room/peer - no-op rather than throw, matching
+  // apps/realtime's own mirrored RoomsService.removePeer.
   removePeer(roomId: string, peerId: string): void {
-    this.getPeer(roomId, peerId);
+    const room = this.rooms.get(roomId);
 
-    this.getRoom(roomId).removePeer(peerId);
+    if (!room) {
+      return;
+    }
+
+    room.removePeer(peerId);
   }
 
-  // Mirrors apps/realtime's closeRoom: a no-op if peers remain, so a caller
-  // can call this unconditionally after removePeer without racing a
-  // concurrent join.
+  // Mirrors apps/realtime's closeRoom: a no-op (but still reports success)
+  // if peers remain or the room is already gone, so a caller can call this
+  // unconditionally after removePeer without racing a concurrent join.
   closeRoom(roomId: string): boolean {
-    const room = this.getRoom(roomId);
+    const room = this.rooms.get(roomId);
+
+    if (!room) {
+      return true;
+    }
 
     if (!room.isEmpty()) {
       return false;

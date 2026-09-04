@@ -405,28 +405,20 @@ describe('MediaRooms (e2e)', () => {
       expect(recreated.body.roomId).toBe(roomId);
     });
 
-    it('removing a peer from an unknown room returns a standard NotFoundException JSON body', async () => {
+    it('removing a peer from an unknown room no-ops instead of 404ing, so a double-leave race stays quiet', async () => {
       const response = await request(server)
         .delete('/media-rooms/no-such-room/peers/ghost')
-        .expect(404);
+        .expect(200);
 
-      expect(response.body).toMatchObject({
-        statusCode: 404,
-        message: expect.stringContaining('no-such-room'),
-        error: 'Not Found',
-      });
+      expect(response.body).toEqual({ removed: true });
     });
 
-    it('closing an unknown room returns a standard NotFoundException JSON body', async () => {
+    it('closing an unknown room reports already closed instead of 404ing, so a double-close race stays quiet', async () => {
       const response = await request(server)
         .delete('/media-rooms/no-such-room')
-        .expect(404);
+        .expect(200);
 
-      expect(response.body).toMatchObject({
-        statusCode: 404,
-        message: expect.stringContaining('no-such-room'),
-        error: 'Not Found',
-      });
+      expect(response.body).toEqual({ closed: true });
     });
   });
 });

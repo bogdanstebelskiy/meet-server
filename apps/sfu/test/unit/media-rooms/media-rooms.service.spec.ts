@@ -187,6 +187,25 @@ describe('MediaRoomsService', () => {
 
       expect(room.getPeer('peer-1')?.sendTransport).toBe(existingTransport);
     });
+
+    it('closes the transport and 404s if the peer is removed while createWebRtcTransport is pending', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+      const transport = { id: 't1', close: jest.fn() };
+      let resolveTransport!: (value: typeof transport) => void;
+      router.createWebRtcTransport.mockReturnValue(
+        new Promise((resolve) => {
+          resolveTransport = resolve;
+        }),
+      );
+
+      const creation = service.createTransport('room-1', 'peer-1', 'send');
+      service.removePeer('room-1', 'peer-1');
+      resolveTransport(transport);
+
+      await expect(creation).rejects.toThrow(NotFoundException);
+      expect(transport.close).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('connectTransport', () => {
@@ -403,19 +422,15 @@ describe('MediaRoomsService', () => {
       );
     });
 
-    it('throws NotFoundException for an unknown peer', async () => {
+    it('no-ops for an unknown peer, so a double-leave race stays quiet', async () => {
       stubWorkerCreatingRouter();
       await service.getOrCreateRoom('room-1');
 
-      expect(() => service.removePeer('room-1', 'missing')).toThrow(
-        NotFoundException,
-      );
+      expect(() => service.removePeer('room-1', 'missing')).not.toThrow();
     });
 
-    it('throws NotFoundException for an unknown room', () => {
-      expect(() => service.removePeer('missing', 'peer-1')).toThrow(
-        NotFoundException,
-      );
+    it('no-ops for an unknown room, so a race against closeRoom stays quiet', () => {
+      expect(() => service.removePeer('missing', 'peer-1')).not.toThrow();
     });
   });
 
@@ -445,8 +460,8 @@ describe('MediaRoomsService', () => {
       expect(service.getRoom('room-1')).toBe(room);
     });
 
-    it('throws NotFoundException for an unknown room', () => {
-      expect(() => service.closeRoom('missing')).toThrow(NotFoundException);
+    it('reports already closed for an unknown room, so a double-close race stays quiet', () => {
+      expect(service.closeRoom('missing')).toBe(true);
     });
   });
 });
