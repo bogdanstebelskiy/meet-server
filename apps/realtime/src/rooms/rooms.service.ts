@@ -111,22 +111,21 @@ export class RoomsService {
     return count === 0;
   }
 
-  // Sequential, best-effort (no MULTI/Lua transaction), same as removePeer.
-  // Known gap #1: a realtime instance dying uncleanly (crash/OOM) between a
-  // peer joining and this running never fires closeRoom at all, so other
-  // instances keep serving that peer as present until issue #7's
-  // liveness/TTL mechanism lands - the TTL on every key below is the only
-  // safety net for that case today.
-  // Known gap #2 (issue #24): no crash needed - a peer joining in the window
-  // between the caller's isEmpty() check and this method's own hkeys()+del()
-  // gets wiped from the peers hash it just joined, since nothing here
-  // re-checks emptiness atomically with the delete.
+  // A crashed instance never fires this, so a dead peer lingers until #7's
+  // TTL/liveness work lands - TTLs below are the safety net for now.
+  // The join-during-close race (#24) is closed by closeRoomIfEmpty (a Lua
+  // script, see redis-scripts.ts): it re-checks and deletes the peers hash
+  // in one atomic server-side step.
   async closeRoom(roomId: string): Promise<void> {
     const peersKey = this.peersKey(roomId);
     const peerIds = await this.redis.hkeys(peersKey);
 
     const roomKey = this.roomKey(roomId);
-    await this.redis.del(roomKey, peersKey);
+    const closed = await this.redis.closeRoomIfEmpty(peersKey, roomKey);
+
+    if (!closed) {
+      return;
+    }
 
     const deleteProducerPromises = peerIds.map((peerId) => {
       const producersKey = this.producersKey(roomId, peerId);

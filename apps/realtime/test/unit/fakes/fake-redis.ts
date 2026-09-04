@@ -65,6 +65,17 @@ export class FakeRedis {
     return deleted;
   }
 
+  // Stands in for the closeRoomIfEmpty Lua command (registerRedisScripts).
+  // Real atomicity is exercised by the e2e tier; this only needs to prove
+  // RoomsService reacts correctly to its 1/0 result.
+  async closeRoomIfEmpty(peersKey: string, roomKey: string): Promise<number> {
+    if (this.hashes.get(peersKey)?.size) {
+      return 0;
+    }
+    await this.del(peersKey, roomKey);
+    return 1;
+  }
+
   ttlOf(key: string): number | undefined {
     return this.ttls.get(key);
   }

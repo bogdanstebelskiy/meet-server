@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as crypto from 'node:crypto';
+import type Redis from 'ioredis';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { AppModule as SfuAppModule } from '../../sfu/src/app.module';
+import { REDIS_CLIENT } from '../src/redis/redis.provider';
 
 // Two real NestJS apps (apps/realtime + apps/sfu) talking over real HTTP,
 // driven by real socket.io clients against apps/realtime. No real ICE/DTLS/
@@ -85,14 +87,26 @@ describe('Signaling (e2e)', () => {
   });
 
   afterAll(async () => {
+    // Close apps before quitting Redis, so no straggling gateway handler
+    // can still issue a command once the connection's gone.
     await app.close();
     await sfuApp.close();
+
+    // app.close() doesn't quit REDIS_CLIENT - it's a raw ioredis instance,
+    // and left open it's a handle that keeps this process from exiting.
+    const redis = app.get<Redis>(REDIS_CLIENT);
+    await redis.quit();
+
     delete process.env.SFU_SERVICE_URL;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     clients.forEach((client) => client.disconnect());
     clients.length = 0;
+
+    // disconnect() doesn't wait for the server's own leave()/Redis cleanup -
+    // give it a moment so it can't race the next test's (or afterAll's) teardown.
+    await new Promise((resolve) => setTimeout(resolve, 300));
   });
 
   function connectClient(): Promise<ClientSocket> {

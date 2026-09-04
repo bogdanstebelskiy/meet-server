@@ -99,3 +99,23 @@ this.chatService
     this.logger.error(`Failed to delete chat history for room ${roomId}`, error),
   );
 ```
+
+Comments should read like a human wrote them: short, plain, one or two lines. State the non-obvious *why* and stop — not a multi-paragraph essay walking through every case, alternative considered, and cross-reference.
+
+```ts
+// avoid
+// Known gap: a realtime instance dying uncleanly (crash/OOM) between a peer
+// joining and this running never fires closeRoom at all, so other instances
+// keep serving that peer as present until issue #7's liveness/TTL mechanism
+// lands - the TTL on every key below is the only safety net for that case
+// today. The other race this used to have (issue #24, now fixed) - a peer
+// joining in the window between the caller's isEmpty() check and this
+// method's own read+delete getting wiped - is closed by
+// CLOSE_ROOM_IF_EMPTY_SCRIPT (redis-scripts.ts): it re-checks the peers hash
+// is still empty and deletes it in one atomic server-side step, so a
+// concurrent addPeer's HSET can't land in between.
+
+// prefer
+// A crashed instance never fires this, so a dead peer lingers until #7's
+// TTL/liveness work lands - TTLs below are the safety net for now.
+```

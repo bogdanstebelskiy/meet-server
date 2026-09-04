@@ -193,12 +193,43 @@ describe('RoomsService', () => {
       await service.getOrCreateRoom('room-1');
       await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
       await service.addProducer('room-1', 'peer-1', 'prod-1', 'audio');
+      await service.removePeer('room-1', 'peer-1');
 
       await service.closeRoom('room-1');
 
       expect(await service.getRoom('room-1')).toBeUndefined();
       expect(await service.getPeer('room-1', 'peer-1')).toBeUndefined();
       expect(await service.getProducers('room-1', 'peer-1')).toEqual([]);
+    });
+
+    it('does not wipe a peer that joins between the emptiness check and the delete (issue #24)', async () => {
+      sfuClient.createOrGetMediaRoom.mockResolvedValue({
+        roomId: 'room-1',
+        rtpCapabilities: {},
+      });
+      await service.getOrCreateRoom('room-1');
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+      await service.removePeer('room-1', 'peer-1');
+
+      // closeRoom reads hkeys before its atomic check-and-delete - inject the
+      // race by having a new peer join as a side effect of that read, before
+      // the delete itself runs.
+      const originalHkeys = redis.hkeys.bind(redis);
+      jest.spyOn(redis, 'hkeys').mockImplementationOnce(async (key) => {
+        await service.addPeer('room-1', { id: 'peer-2', displayName: 'Bob' });
+        return originalHkeys(key);
+      });
+
+      await service.closeRoom('room-1');
+
+      expect(await service.getRoom('room-1')).toEqual({
+        id: 'room-1',
+        rtpCapabilities: {},
+      });
+      expect(await service.getPeer('room-1', 'peer-2')).toEqual({
+        id: 'peer-2',
+        displayName: 'Bob',
+      });
     });
 
     it('a room closed and then re-requested calls the SfuClient again', async () => {
