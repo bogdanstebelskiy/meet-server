@@ -3,14 +3,25 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
+import { AppModule as SfuAppModule } from '../../sfu/src/app.module';
 
-// Real NestJS app + real mediasoup (no mocks), driven by real socket.io
-// clients. No real ICE/DTLS/RTP since there's no browser: dtlsParameters are
-// fabricated, and connectWebRtcTransport/produce/consume are pure signaling
-// RPCs that don't need real connectivity. See docs/sfu-signaling-design.md
-// for the two bugs this suite found and now regression-tests as fixed.
+// Two real NestJS apps (apps/realtime + apps/sfu) talking over real HTTP,
+// driven by real socket.io clients against apps/realtime. No real ICE/DTLS/
+// RTP since there's no browser: dtlsParameters are fabricated, and
+// connectWebRtcTransport/produce/consume are pure signaling RPCs that don't
+// need real connectivity. See docs/sfu-signaling-design.md for the two bugs
+// this suite found and now regression-tests as fixed.
 
-jest.setTimeout(20000);
+jest.setTimeout(30000);
+
+function listenOnEphemeralPort(app: INestApplication): Promise<string> {
+  return app.listen(0).then(() => {
+    const address = app.getHttpServer().address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+
+    return `http://127.0.0.1:${port}`;
+  });
+}
 
 function fakeDtlsParameters() {
   const fingerprint = crypto
@@ -48,25 +59,35 @@ function audioProducerRtpParameters(routerRtpCapabilities: any, ssrc: number) {
 }
 
 describe('Signaling (e2e)', () => {
+  let sfuApp: INestApplication;
   let app: INestApplication;
   let baseUrl: string;
   const clients: ClientSocket[] = [];
 
   beforeAll(async () => {
+    const sfuModuleFixture: TestingModule = await Test.createTestingModule({
+      imports: [SfuAppModule],
+    }).compile();
+
+    sfuApp = sfuModuleFixture.createNestApplication();
+    const sfuServiceUrl = await listenOnEphemeralPort(sfuApp);
+
+    // Read by apps/realtime's SfuClientModule (HttpModule.registerAsync)
+    // when AppModule below is compiled - must be set first.
+    process.env.SFU_SERVICE_URL = sfuServiceUrl;
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    await app.listen(0);
-
-    const address = app.getHttpServer().address();
-    const port = typeof address === 'object' && address ? address.port : 0;
-    baseUrl = `http://127.0.0.1:${port}`;
+    baseUrl = await listenOnEphemeralPort(app);
   });
 
   afterAll(async () => {
     await app.close();
+    await sfuApp.close();
+    delete process.env.SFU_SERVICE_URL;
   });
 
   afterEach(() => {
@@ -362,6 +383,11 @@ describe('Signaling (e2e)', () => {
         roomId: 'no-recv-room',
         displayName: 'Grace',
       });
+      // A send transport registers this peer in apps/sfu's MediaRoom (its
+      // peers are created lazily per-transport, unlike realtime's Room,
+      // whose Peer exists right after join) - without it, consume would 404
+      // as "peer not found" rather than reaching the check this test targets.
+      await emitAsync(client, 'createWebRtcTransport', { direction: 'send' });
       // no createWebRtcTransport({direction: 'recv'}) call: that's the point
 
       const { ack, exception } = await observeOutcome(client, 'consume', {
