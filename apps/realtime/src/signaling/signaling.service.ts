@@ -169,9 +169,27 @@ export class SignalingService {
 
     await this.roomsService.removePeer(roomId, peerId);
 
+    try {
+      // Must be awaited, not fire-and-forget - closeRoom below checks
+      // room.isEmpty() in apps/sfu too, and a still-in-flight removal would
+      // make it see this peer as still present and no-op forever, since
+      // nothing ever retries closeRoom once the Redis room key is gone.
+      await this.sfuClient.removePeer(roomId, peerId);
+    } catch (error) {
+      this.logger.error(
+        `Failed to remove peer ${peerId} from sfu room ${roomId}`,
+        error,
+      );
+    }
+
     const isRoomEmpty = await this.roomsService.isEmpty(roomId);
     if (isRoomEmpty) {
       await this.roomsService.closeRoom(roomId);
+      this.sfuClient
+        .closeRoom(roomId)
+        .catch((error) =>
+          this.logger.error(`Failed to close sfu room ${roomId}`, error),
+        );
       this.chatService
         .deleteRoomHistory(roomId)
         .catch((error) =>

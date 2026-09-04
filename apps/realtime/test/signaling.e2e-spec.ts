@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, NotFoundException } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import type Redis from 'ioredis';
 import { io, Socket as ClientSocket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { AppModule as SfuAppModule } from '../../sfu/src/app.module';
+import { MediaRoomsService } from '../../sfu/src/media-rooms/media-rooms.service';
 import { REDIS_CLIENT } from '../src/redis/redis.provider';
 
 // Two real NestJS apps (apps/realtime + apps/sfu) talking over real HTTP,
@@ -542,6 +543,25 @@ describe('Signaling (e2e)', () => {
       });
 
       expect(join).toEqual({ peerId: survivor.id, existingPeers: [] });
+    });
+  });
+
+  describe('apps/sfu teardown on leave', () => {
+    it('actually removes the peer in apps/sfu once it disconnects, not just in Redis', async () => {
+      const alice = await connectClient();
+      const roomId = 'sfu-teardown-room';
+      const alicePeerId = alice.id!;
+
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+      await emitAsync(alice, 'createWebRtcTransport', { direction: 'send' });
+
+      alice.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const mediaRoomsService = sfuApp.get(MediaRoomsService);
+      expect(() => mediaRoomsService.getPeer(roomId, alicePeerId)).toThrow(
+        NotFoundException,
+      );
     });
   });
 });

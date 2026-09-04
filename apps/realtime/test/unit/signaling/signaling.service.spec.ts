@@ -26,6 +26,8 @@ describe('SignalingService', () => {
     resumeConsumer: jest.Mock;
     pauseProducer: jest.Mock;
     resumeProducer: jest.Mock;
+    removePeer: jest.Mock;
+    closeRoom: jest.Mock;
   };
   let chatService: {
     deleteRoomHistory: jest.Mock;
@@ -54,6 +56,8 @@ describe('SignalingService', () => {
       resumeConsumer: jest.fn(),
       pauseProducer: jest.fn(),
       resumeProducer: jest.fn(),
+      removePeer: jest.fn().mockResolvedValue({ removed: true }),
+      closeRoom: jest.fn().mockResolvedValue({ closed: true }),
     };
 
     chatService = {
@@ -373,25 +377,65 @@ describe('SignalingService', () => {
       await expect(service.leave('missing', 'peer-1')).resolves.not.toThrow();
       expect(roomsService.removePeer).not.toHaveBeenCalled();
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
+      expect(sfuClient.removePeer).not.toHaveBeenCalled();
+      expect(sfuClient.closeRoom).not.toHaveBeenCalled();
     });
 
-    it('removes the peer but does not close the room while others remain', async () => {
+    it('removes the peer in apps/sfu but does not close the room while others remain', async () => {
       roomsService.isEmpty.mockResolvedValue(false);
 
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
+      expect(sfuClient.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
+      expect(sfuClient.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
     });
 
-    it('closes the room and deletes its chat history once the last peer leaves', async () => {
+    it('closes the room in apps/sfu and deletes its chat history once the last peer leaves', async () => {
       roomsService.isEmpty.mockResolvedValue(true);
 
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.closeRoom).toHaveBeenCalledWith('room-1');
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
+    });
+
+    it('waits for the sfu peer removal to land before closing the room there, so a still-in-flight removal never loses the closeRoom race', async () => {
+      roomsService.isEmpty.mockResolvedValue(true);
+      const callOrder: string[] = [];
+      let resolveRemovePeer!: () => void;
+      const removePeerPromise = new Promise((resolve) => {
+        resolveRemovePeer = () => {
+          callOrder.push('removePeer');
+          resolve({ removed: true });
+        };
+      });
+      sfuClient.removePeer.mockReturnValue(removePeerPromise);
+      sfuClient.closeRoom.mockImplementation(() => {
+        callOrder.push('closeRoom');
+        return Promise.resolve({ closed: true });
+      });
+
+      const leaving = service.leave('room-1', 'peer-1');
+      resolveRemovePeer();
+      await leaving;
+
+      expect(callOrder).toEqual(['removePeer', 'closeRoom']);
+    });
+
+    it('resolves even when apps/sfu teardown rejects, so a disconnect never hangs or throws', async () => {
+      roomsService.isEmpty.mockResolvedValue(true);
+      sfuClient.removePeer.mockRejectedValue(new Error('sfu unreachable'));
+      sfuClient.closeRoom.mockRejectedValue(new Error('sfu unreachable'));
+
+      await expect(service.leave('room-1', 'peer-1')).resolves.toBeUndefined();
+
+      // Flush the fire-and-forget .catch() handlers before the test ends.
+      await Promise.resolve();
+      await Promise.resolve();
     });
   });
 });
