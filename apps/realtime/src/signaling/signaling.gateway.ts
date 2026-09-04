@@ -51,7 +51,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
 
   @SubscribeMessage('getRouterRtpCapabilities')
   getRouterRtpCapabilities(@RequireSocketContext() { roomId }: SocketContext) {
-    return this.signalingService.getRoom(roomId).router.rtpCapabilities;
+    return this.signalingService.getRoom(roomId).rtpCapabilities;
   }
 
   @SubscribeMessage('createWebRtcTransport')
@@ -59,18 +59,11 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { direction }: CreateTransportPayload,
   ) {
-    const transport = await this.signalingService.createWebRtcTransport(
+    return this.signalingService.createWebRtcTransport(
       roomId,
       peerId,
       direction,
     );
-
-    return {
-      id: transport.id,
-      iceParameters: transport.iceParameters,
-      iceCandidates: transport.iceCandidates,
-      dtlsParameters: transport.dtlsParameters,
-    };
   }
 
   @SubscribeMessage('connectWebRtcTransport')
@@ -94,7 +87,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { transportId, kind, rtpParameters }: ProducePayload,
   ) {
-    const producer = await this.signalingService.produce(
+    const { id } = await this.signalingService.produce(
       roomId,
       peerId,
       transportId,
@@ -102,13 +95,9 @@ export class SignalingGateway implements OnGatewayDisconnect {
       rtpParameters,
     );
 
-    client.to(roomId).emit('newProducer', {
-      peerId,
-      producerId: producer.id,
-      kind: producer.kind,
-    });
+    client.to(roomId).emit('newProducer', { peerId, producerId: id, kind });
 
-    return { id: producer.id };
+    return { id };
   }
 
   @SubscribeMessage('consume')
@@ -116,20 +105,12 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { producerId, rtpCapabilities }: ConsumePayload,
   ) {
-    const consumer = await this.signalingService.consume(
+    return this.signalingService.consume(
       roomId,
       peerId,
       producerId,
       rtpCapabilities,
     );
-
-    return {
-      id: consumer.id,
-      producerId,
-      kind: consumer.kind,
-      rtpParameters: consumer.rtpParameters,
-      producerPaused: consumer.producerPaused,
-    };
   }
 
   @SubscribeMessage('resumeConsumer')

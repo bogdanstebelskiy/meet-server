@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
-import { SfuModule } from '../sfu/sfu.module';
+import { SfuClientModule } from '../sfu-client/sfu-client.module';
 
 @Module({
-  imports: [SfuModule],
+  imports: [SfuClientModule],
   providers: [RoomsService],
   exports: [RoomsService],
 })

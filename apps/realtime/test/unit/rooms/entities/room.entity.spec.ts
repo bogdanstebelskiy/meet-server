@@ -2,11 +2,10 @@ import { Room } from '../../../../src/rooms/entities/room.entity';
 import { Peer } from '../../../../src/rooms/entities/peer.entity';
 
 describe('Room', () => {
-  const fakeRouter = () => ({ close: jest.fn() }) as any;
-  const fakeWorker = () => ({}) as any;
+  const fakeRtpCapabilities = () => ({ codecs: [] }) as any;
 
   it('adds and removes peers, tracking isEmpty()', () => {
-    const room = new Room('room-1', fakeRouter(), fakeWorker());
+    const room = new Room('room-1', fakeRtpCapabilities());
     const peer = new Peer('peer-1', 'Alice');
 
     room.addPeer(peer);
@@ -19,25 +18,13 @@ describe('Room', () => {
   });
 
   it('removePeer is a no-op for an unknown peer id, not a throw', () => {
-    const room = new Room('room-1', fakeRouter(), fakeWorker());
+    const room = new Room('room-1', fakeRtpCapabilities());
 
     expect(() => room.removePeer('missing')).not.toThrow();
   });
 
-  it('removePeer closes the peer so its transports/producers/consumers cascade-close', () => {
-    const room = new Room('room-1', fakeRouter(), fakeWorker());
-    const peer = new Peer('peer-1', 'Alice');
-    const closeSpy = jest.fn();
-    peer.close = closeSpy;
-    room.addPeer(peer);
-
-    room.removePeer('peer-1');
-
-    expect(closeSpy).toHaveBeenCalledTimes(1);
-  });
-
   it('getOtherPeers excludes the given peer id', () => {
-    const room = new Room('room-1', fakeRouter(), fakeWorker());
+    const room = new Room('room-1', fakeRtpCapabilities());
     const peer1 = new Peer('peer-1', 'Alice');
     const peer2 = new Peer('peer-2', 'Bob');
     room.addPeer(peer1);
@@ -47,19 +34,17 @@ describe('Room', () => {
   });
 
   it('getOtherPeers returns everyone when the given id is not in the room', () => {
-    const room = new Room('room-1', fakeRouter(), fakeWorker());
+    const room = new Room('room-1', fakeRtpCapabilities());
     const peer1 = new Peer('peer-1', 'Alice');
     room.addPeer(peer1);
 
     expect(room.getOtherPeers('never-joined')).toEqual([peer1]);
   });
 
-  it('close() closes the router', () => {
-    const router = fakeRouter();
-    const room = new Room('room-1', router, fakeWorker());
+  it('exposes the rtpCapabilities it was created with', () => {
+    const rtpCapabilities = fakeRtpCapabilities();
+    const room = new Room('room-1', rtpCapabilities);
 
-    room.close();
-
-    expect(router.close).toHaveBeenCalledTimes(1);
+    expect(room.rtpCapabilities).toBe(rtpCapabilities);
   });
 });

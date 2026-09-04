@@ -1,12 +1,7 @@
 import type { DefaultEventsMap, Socket } from 'socket.io';
+import type { TransportDirection } from '@app/media-contracts';
 
-export const TRANSPORT_DIRECTIONS = {
-  SEND: 'send',
-  RECV: 'recv',
-} as const;
-
-export type TransportDirection =
-  (typeof TRANSPORT_DIRECTIONS)[keyof typeof TRANSPORT_DIRECTIONS];
+export type { TransportDirection };
 
 export interface SocketContext {
   roomId: string;

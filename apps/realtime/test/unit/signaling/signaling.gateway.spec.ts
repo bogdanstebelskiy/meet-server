@@ -118,9 +118,9 @@ describe('SignalingGateway', () => {
   // These handlers take context directly, not the socket: calling the method
   // here bypasses Nest's param-decorator pipeline, so we pass it ourselves.
   describe('getRouterRtpCapabilities', () => {
-    it('returns the router capabilities for the given roomId', () => {
+    it('returns the room rtpCapabilities for the given roomId', () => {
       const rtpCapabilities = { codecs: [] };
-      signalingService.getRoom.mockReturnValue({ router: { rtpCapabilities } });
+      signalingService.getRoom.mockReturnValue({ rtpCapabilities });
 
       const result = gateway.getRouterRtpCapabilities({
         roomId: 'room-1',
@@ -133,14 +133,14 @@ describe('SignalingGateway', () => {
   });
 
   describe('createWebRtcTransport', () => {
-    it('shapes the transport into only the client-facing connection params', async () => {
-      signalingService.createWebRtcTransport.mockResolvedValue({
+    it('returns whatever the service (backed by apps/sfu) resolves', async () => {
+      const transport = {
         id: 't1',
         iceParameters: {},
         iceCandidates: [],
         dtlsParameters: {},
-        appData: { shouldNotLeakToClient: true },
-      });
+      };
+      signalingService.createWebRtcTransport.mockResolvedValue(transport);
 
       const result = await gateway.createWebRtcTransport(
         { roomId: 'room-1', peerId: 'socket-1' },
@@ -152,22 +152,14 @@ describe('SignalingGateway', () => {
         'socket-1',
         'send',
       );
-      expect(result).toEqual({
-        id: 't1',
-        iceParameters: {},
-        iceCandidates: [],
-        dtlsParameters: {},
-      });
+      expect(result).toBe(transport);
     });
   });
 
   describe('produce', () => {
     it('broadcasts newProducer to the room and returns only the producer id', async () => {
       const client = createFakeClient({ roomId: 'room-1', peerId: 'socket-1' });
-      signalingService.produce.mockResolvedValue({
-        id: 'prod-1',
-        kind: 'audio',
-      });
+      signalingService.produce.mockResolvedValue({ id: 'prod-1' });
 
       const result = await gateway.produce(
         client,
@@ -197,13 +189,15 @@ describe('SignalingGateway', () => {
   });
 
   describe('consume', () => {
-    it('includes producerPaused so the client knows an already-paused producer', async () => {
-      signalingService.consume.mockResolvedValue({
+    it('returns whatever the service (backed by apps/sfu) resolves, including producerPaused', async () => {
+      const consumeResponse = {
         id: 'cons-1',
+        producerId: 'prod-1',
         kind: 'video',
         rtpParameters: {},
         producerPaused: true,
-      });
+      };
+      signalingService.consume.mockResolvedValue(consumeResponse);
 
       const result = await gateway.consume(
         { roomId: 'room-1', peerId: 'socket-1' },
@@ -216,13 +210,7 @@ describe('SignalingGateway', () => {
         'prod-1',
         {},
       );
-      expect(result).toEqual({
-        id: 'cons-1',
-        producerId: 'prod-1',
-        kind: 'video',
-        rtpParameters: {},
-        producerPaused: true,
-      });
+      expect(result).toBe(consumeResponse);
     });
   });
 

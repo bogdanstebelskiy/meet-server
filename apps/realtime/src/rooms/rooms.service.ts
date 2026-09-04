@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { SfuService } from '../sfu/sfu.service';
-import { mediaCodecs } from '../sfu/config';
+import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { Room } from './entities/room.entity';
 import { Peer } from './entities/peer.entity';
 
@@ -8,10 +7,11 @@ import { Peer } from './entities/peer.entity';
 export class RoomsService {
   private readonly rooms = new Map<string, Room>();
   // Dedupes concurrent getOrCreateRoom calls for a new roomId, so two peers
-  // joining at the same instant don't each create their own router.
+  // joining at the same instant don't each create their own local Room (and
+  // silently drop whichever's peer got added first when the second write wins).
   private readonly pendingRooms = new Map<string, Promise<Room>>();
 
-  constructor(private readonly sfuService: SfuService) {}
+  constructor(private readonly sfuClient: SfuClientService) {}
 
   async getOrCreateRoom(roomId: string): Promise<Room> {
     const existing = this.rooms.get(roomId);
@@ -35,11 +35,10 @@ export class RoomsService {
   }
 
   private async createRoom(roomId: string): Promise<Room> {
-    const worker = this.sfuService.getWorker();
-    const router = await worker.createRouter({ mediaCodecs });
-    this.sfuService.trackRouterCreated(worker);
+    const { rtpCapabilities } =
+      await this.sfuClient.createOrGetMediaRoom(roomId);
 
-    const room = new Room(roomId, router, worker);
+    const room = new Room(roomId, rtpCapabilities);
     this.rooms.set(roomId, room);
 
     return room;
@@ -53,15 +52,10 @@ export class RoomsService {
     return this.getRoom(roomId)?.peers.get(peerId);
   }
 
+  // Only forgets the Room locally - apps/sfu has no MediaRoom teardown
+  // endpoint yet (tracked in #18), so its mediasoup resources leak until
+  // that lands.
   closeRoom(roomId: string): void {
-    const room = this.rooms.get(roomId);
-
-    if (!room) {
-      return;
-    }
-
-    room.close();
-    this.sfuService.trackRouterClosed(room.worker);
     this.rooms.delete(roomId);
   }
 }

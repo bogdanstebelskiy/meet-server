@@ -6,10 +6,9 @@ import type {
   RtpParameters,
 } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
+import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { Peer } from '../rooms/entities/peer.entity';
 import { ChatService } from '../chat/chat.service';
-import { webRtcAnnouncedAddress, webRtcPortRange } from '../sfu/config';
-import { TRANSPORT_DIRECTIONS } from './types';
 import type { TransportDirection } from './types';
 
 @Injectable()
@@ -18,6 +17,7 @@ export class SignalingService {
 
   constructor(
     private readonly roomsService: RoomsService,
+    private readonly sfuClient: SfuClientService,
     private readonly chatService: ChatService,
   ) {}
 
@@ -30,10 +30,10 @@ export class SignalingService {
     }));
 
     const existingProducers = otherPeers.flatMap((peer) =>
-      [...peer.producers.values()].map((producer) => ({
+      [...peer.producers.entries()].map(([producerId, kind]) => ({
         peerId: peer.id,
-        producerId: producer.id,
-        kind: producer.kind,
+        producerId,
+        kind,
       })),
     );
 
@@ -68,36 +68,9 @@ export class SignalingService {
     peerId: string,
     direction: TransportDirection,
   ) {
-    const room = this.getRoom(roomId);
-    const peer = this.getPeer(roomId, peerId);
+    this.getPeer(roomId, peerId);
 
-    const transport = await room.router.createWebRtcTransport({
-      listenInfos: [
-        {
-          protocol: 'udp',
-          ip: '0.0.0.0',
-          announcedAddress: webRtcAnnouncedAddress,
-          portRange: webRtcPortRange,
-        },
-        {
-          protocol: 'tcp',
-          ip: '0.0.0.0',
-          announcedAddress: webRtcAnnouncedAddress,
-          portRange: webRtcPortRange,
-        },
-      ],
-      enableUdp: true,
-      enableTcp: true,
-      preferUdp: true,
-    });
-
-    if (direction === TRANSPORT_DIRECTIONS.SEND) {
-      peer.sendTransport = transport;
-    } else {
-      peer.recvTransport = transport;
-    }
-
-    return transport;
+    return this.sfuClient.createTransport(roomId, peerId, direction);
   }
 
   async connectWebRtcTransport(
@@ -106,9 +79,14 @@ export class SignalingService {
     transportId: string,
     dtlsParameters: DtlsParameters,
   ) {
-    const transport = this.findTransport(roomId, peerId, transportId);
+    this.getPeer(roomId, peerId);
 
-    await transport.connect({ dtlsParameters });
+    await this.sfuClient.connectTransport(
+      roomId,
+      peerId,
+      transportId,
+      dtlsParameters,
+    );
   }
 
   async produce(
@@ -120,16 +98,16 @@ export class SignalingService {
   ) {
     const peer = this.getPeer(roomId, peerId);
 
-    if (peer.sendTransport?.id !== transportId) {
-      throw new NotFoundException(
-        `Send transport ${transportId} not found for peer ${peerId}`,
-      );
-    }
+    const { id } = await this.sfuClient.produce(
+      roomId,
+      peerId,
+      transportId,
+      kind,
+      rtpParameters,
+    );
+    peer.producers.set(id, kind);
 
-    const producer = await peer.sendTransport.produce({ kind, rtpParameters });
-    peer.producers.set(producer.id, producer);
-
-    return producer;
+    return { id };
   }
 
   async consume(
@@ -138,50 +116,27 @@ export class SignalingService {
     producerId: string,
     rtpCapabilities: RtpCapabilities,
   ) {
-    const room = this.getRoom(roomId);
-    const peer = this.getPeer(roomId, peerId);
+    this.getPeer(roomId, peerId);
 
-    if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-      throw new NotFoundException(`Cannot consume producer ${producerId}`);
-    }
-
-    if (!peer.recvTransport) {
-      throw new NotFoundException(`Peer ${peerId} has no recv transport`);
-    }
-
-    const consumer = await peer.recvTransport.consume({
-      producerId,
-      rtpCapabilities,
-      paused: true,
-    });
-    peer.consumers.set(consumer.id, consumer);
-
-    return consumer;
+    return this.sfuClient.consume(roomId, peerId, producerId, rtpCapabilities);
   }
 
   async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
-    const peer = this.getPeer(roomId, peerId);
-    const consumer = peer.consumers.get(consumerId);
+    this.getPeer(roomId, peerId);
 
-    if (!consumer) {
-      throw new NotFoundException(
-        `Consumer ${consumerId} not found for peer ${peerId}`,
-      );
-    }
-
-    await consumer.resume();
+    await this.sfuClient.resumeConsumer(roomId, peerId, consumerId);
   }
 
   async pauseProducer(roomId: string, peerId: string, producerId: string) {
-    const producer = this.findProducer(roomId, peerId, producerId);
+    this.getPeer(roomId, peerId);
 
-    await producer.pause();
+    await this.sfuClient.pauseProducer(roomId, peerId, producerId);
   }
 
   async resumeProducer(roomId: string, peerId: string, producerId: string) {
-    const producer = this.findProducer(roomId, peerId, producerId);
+    this.getPeer(roomId, peerId);
 
-    await producer.resume();
+    await this.sfuClient.resumeProducer(roomId, peerId, producerId);
   }
 
   leave(roomId: string, peerId: string): void {
@@ -204,34 +159,5 @@ export class SignalingService {
           ),
         );
     }
-  }
-
-  private findProducer(roomId: string, peerId: string, producerId: string) {
-    const peer = this.getPeer(roomId, peerId);
-    const producer = peer.producers.get(producerId);
-
-    if (!producer) {
-      throw new NotFoundException(
-        `Producer ${producerId} not found for peer ${peerId}`,
-      );
-    }
-
-    return producer;
-  }
-
-  private findTransport(roomId: string, peerId: string, transportId: string) {
-    const peer = this.getPeer(roomId, peerId);
-
-    if (peer.sendTransport?.id === transportId) {
-      return peer.sendTransport;
-    }
-
-    if (peer.recvTransport?.id === transportId) {
-      return peer.recvTransport;
-    }
-
-    throw new NotFoundException(
-      `Transport ${transportId} not found for peer ${peerId}`,
-    );
   }
 }

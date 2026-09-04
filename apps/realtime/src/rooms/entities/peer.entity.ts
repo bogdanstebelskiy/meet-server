@@ -1,23 +1,15 @@
-import type { Consumer, Producer, WebRtcTransport } from 'mediasoup/types';
+import type { MediaKind } from 'mediasoup/types';
 
 export class Peer {
   readonly id: string;
   displayName: string;
 
-  sendTransport?: WebRtcTransport;
-  recvTransport?: WebRtcTransport;
-
-  readonly producers = new Map<string, Producer>();
-  readonly consumers = new Map<string, Consumer>();
+  // producerId -> kind, just enough to backfill newProducer for late
+  // joiners; the mediasoup Producer objects themselves live in apps/sfu.
+  readonly producers = new Map<string, MediaKind>();
 
   constructor(id: string, displayName: string) {
     this.id = id;
     this.displayName = displayName;
-  }
-
-  // Closing a transport cascades to every producer/consumer on it.
-  close(): void {
-    this.sendTransport?.close();
-    this.recvTransport?.close();
   }
 }
