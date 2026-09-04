@@ -30,29 +30,38 @@ export class SignalingService {
     const peer: Peer = { id: peerId, displayName };
     await this.roomsService.addPeer(roomId, peer);
 
-    const otherPeers = await this.roomsService.getOtherPeers(roomId, peerId);
-    const existingPeers = otherPeers.map((otherPeer) => ({
-      id: otherPeer.id,
-      displayName: otherPeer.displayName,
-    }));
-
-    const producerFetchPromises = otherPeers.map(async (otherPeer) => {
-      const producers = await this.roomsService.getProducers(
-        roomId,
-        otherPeer.id,
-      );
-      const producersWithPeerId = producers.map(({ producerId, kind }) => ({
-        peerId: otherPeer.id,
-        producerId,
-        kind,
+    try {
+      const otherPeers = await this.roomsService.getOtherPeers(roomId, peerId);
+      const existingPeers = otherPeers.map((otherPeer) => ({
+        id: otherPeer.id,
+        displayName: otherPeer.displayName,
       }));
-      return producersWithPeerId;
-    });
 
-    const producersByPeer = await Promise.all(producerFetchPromises);
-    const existingProducers = producersByPeer.flat();
+      const producerFetchPromises = otherPeers.map(async (otherPeer) => {
+        const producers = await this.roomsService.getProducers(
+          roomId,
+          otherPeer.id,
+        );
+        const producersWithPeerId = producers.map(({ producerId, kind }) => ({
+          peerId: otherPeer.id,
+          producerId,
+          kind,
+        }));
+        return producersWithPeerId;
+      });
 
-    return { peer, existingPeers, existingProducers };
+      const producersByPeer = await Promise.all(producerFetchPromises);
+      const existingProducers = producersByPeer.flat();
+
+      return { peer, existingPeers, existingProducers };
+    } catch (error) {
+      // Roll back the add above - otherwise a failure here leaves a ghost
+      // peer nothing ever cleans up (the gateway never learns this peer's
+      // roomId/peerId when join() rejects, so its own disconnect handler
+      // can't remove it either).
+      await this.roomsService.removePeer(roomId, peerId);
+      throw error;
+    }
   }
 
   async getRoom(roomId: string) {

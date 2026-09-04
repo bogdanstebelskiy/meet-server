@@ -99,6 +99,21 @@ describe('SignalingService', () => {
       expect(existingPeers).toEqual([]);
     });
 
+    it('removes the peer it just added if reading other peers fails', async () => {
+      const readError = new Error('redis blip');
+      roomsService.getOtherPeers.mockRejectedValue(readError);
+
+      await expect(service.join('room-1', 'peer-1', 'Alice')).rejects.toThrow(
+        readError,
+      );
+
+      expect(roomsService.addPeer).toHaveBeenCalledWith('room-1', {
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
+      expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
+    });
+
     it('collects existing producers from other peers', async () => {
       roomsService.getOtherPeers.mockResolvedValue([
         { id: 'peer-bob', displayName: 'Bob' },
