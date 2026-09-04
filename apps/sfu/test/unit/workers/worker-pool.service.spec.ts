@@ -41,40 +41,49 @@ describe('WorkerPoolService', () => {
     expect(createWorker).toHaveBeenCalledTimes(3);
   });
 
-  it('getWorker throws before onModuleInit has run, instead of returning undefined', () => {
-    expect(() => service.getWorker()).toThrow(
+  it('reserveWorker throws before onModuleInit has run, instead of returning undefined', () => {
+    expect(() => service.reserveWorker()).toThrow(
       /no mediasoup workers available/i,
     );
   });
 
-  it('getWorker picks the worker with the fewest routers, not blind round-robin', async () => {
+  it('reserveWorker picks the worker with the fewest routers, not blind round-robin', async () => {
     await service.onModuleInit();
 
-    const first = service.getWorker();
-    service.trackRouterCreated(first);
-    service.trackRouterCreated(first);
+    const first = service.reserveWorker();
+    service.reserveWorker();
+    service.trackRouterClosed(first);
 
-    const second = service.getWorker();
-    expect(second).not.toBe(first);
+    const third = service.reserveWorker();
+    expect(third).toBe(first);
+  });
 
-    service.trackRouterCreated(second);
-    service.trackRouterCreated(second);
+  it('reserveWorker spreads a burst of back-to-back calls across every worker, not onto one', async () => {
+    await service.onModuleInit();
 
-    const third = service.getWorker();
-    expect(third).not.toBe(first);
-    expect(third).not.toBe(second);
+    // No intervening await between calls - this is exactly what a burst of
+    // concurrent room-creation calls looks like before any createRouter
+    // resolves, since JS runs each synchronous call to completion first.
+    const first = service.reserveWorker();
+    const second = service.reserveWorker();
+    const third = service.reserveWorker();
+
+    expect(new Set([first, second, third]).size).toBe(3);
   });
 
   it('trackRouterClosed never drops a worker load below zero', async () => {
     await service.onModuleInit();
-    const worker = service.getWorker();
+    const worker = service.reserveWorker();
 
     service.trackRouterClosed(worker);
     service.trackRouterClosed(worker);
-    service.trackRouterCreated(worker);
 
-    const other = service.getWorker();
-    expect(other).not.toBe(worker);
+    const picks = [
+      service.reserveWorker(),
+      service.reserveWorker(),
+      service.reserveWorker(),
+    ];
+    expect(new Set(picks).size).toBe(3);
   });
 
   it('exits the process shortly after a worker dies', async () => {
@@ -84,7 +93,7 @@ describe('WorkerPoolService', () => {
       .mockImplementation(() => undefined as never);
 
     await service.onModuleInit();
-    const worker = service.getWorker() as unknown as { on: jest.Mock };
+    const worker = service.reserveWorker() as unknown as { on: jest.Mock };
     const diedHandler = worker.on.mock.calls.find(
       ([event]) => event === 'died',
     )?.[1];
@@ -100,7 +109,7 @@ describe('WorkerPoolService', () => {
     const killSpy = jest.spyOn(process, 'kill').mockReturnValue(true);
 
     await service.onModuleInit();
-    const worker = service.getWorker() as unknown as {
+    const worker = service.reserveWorker() as unknown as {
       pid: number;
       close: jest.Mock;
     };

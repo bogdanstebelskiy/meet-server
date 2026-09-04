@@ -6,8 +6,7 @@ import { WebRtcConfigService } from '../../../src/config/webrtc-config.service';
 describe('MediaRoomsService', () => {
   let service: MediaRoomsService;
   let workerPool: {
-    getWorker: jest.Mock;
-    trackRouterCreated: jest.Mock;
+    reserveWorker: jest.Mock;
     trackRouterClosed: jest.Mock;
   };
   let webRtcConfig: { announcedAddress: string; portRange: unknown };
@@ -29,8 +28,7 @@ describe('MediaRoomsService', () => {
     };
 
     workerPool = {
-      getWorker: jest.fn(),
-      trackRouterCreated: jest.fn(),
+      reserveWorker: jest.fn(),
       trackRouterClosed: jest.fn(),
     };
 
@@ -48,7 +46,7 @@ describe('MediaRoomsService', () => {
   function stubWorkerCreatingRouter() {
     const worker = createFakeWorker();
     worker.createRouter.mockResolvedValue(router);
-    workerPool.getWorker.mockReturnValue(worker);
+    workerPool.reserveWorker.mockReturnValue(worker);
 
     return worker;
   }
@@ -59,11 +57,10 @@ describe('MediaRoomsService', () => {
 
       const room = await service.getOrCreateRoom('room-1');
 
-      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(workerPool.reserveWorker).toHaveBeenCalledTimes(1);
       expect(worker.createRouter).toHaveBeenCalledWith({
         mediaCodecs: expect.any(Array),
       });
-      expect(workerPool.trackRouterCreated).toHaveBeenCalledWith(worker);
       expect(room.id).toBe('room-1');
       expect(room.router).toBe(router);
     });
@@ -75,7 +72,7 @@ describe('MediaRoomsService', () => {
       const second = await service.getOrCreateRoom('room-1');
 
       expect(first).toBe(second);
-      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(workerPool.reserveWorker).toHaveBeenCalledTimes(1);
       expect(worker.createRouter).toHaveBeenCalledTimes(1);
     });
 
@@ -87,7 +84,7 @@ describe('MediaRoomsService', () => {
           resolveRouter = resolve;
         }),
       );
-      workerPool.getWorker.mockReturnValue(worker);
+      workerPool.reserveWorker.mockReturnValue(worker);
 
       const call1 = service.getOrCreateRoom('room-1');
       const call2 = service.getOrCreateRoom('room-1');
@@ -96,9 +93,20 @@ describe('MediaRoomsService', () => {
       const [room1, room2] = await Promise.all([call1, call2]);
 
       expect(room1).toBe(room2);
-      expect(workerPool.getWorker).toHaveBeenCalledTimes(1);
+      expect(workerPool.reserveWorker).toHaveBeenCalledTimes(1);
       expect(worker.createRouter).toHaveBeenCalledTimes(1);
-      expect(workerPool.trackRouterCreated).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the reserved worker slot and does not cache the room when createRouter rejects', async () => {
+      const worker = createFakeWorker();
+      const error = new Error('router creation failed');
+      worker.createRouter.mockRejectedValue(error);
+      workerPool.reserveWorker.mockReturnValue(worker);
+
+      await expect(service.getOrCreateRoom('room-1')).rejects.toThrow(error);
+
+      expect(workerPool.trackRouterClosed).toHaveBeenCalledWith(worker);
+      expect(() => service.getRoom('room-1')).toThrow(NotFoundException);
     });
   });
 
@@ -146,6 +154,38 @@ describe('MediaRoomsService', () => {
       await service.createTransport('room-1', 'peer-1', 'recv');
 
       expect(service.getPeer('room-1', 'peer-1').recvTransport).toBe(transport);
+    });
+
+    it('forgets a brand-new peer if createWebRtcTransport rejects, so the room can still become empty', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+      const error = new Error('transport creation failed');
+      router.createWebRtcTransport.mockRejectedValue(error);
+
+      await expect(
+        service.createTransport('room-1', 'peer-1', 'send'),
+      ).rejects.toThrow(error);
+
+      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('keeps an already-known peer around if createWebRtcTransport rejects on a second call', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const existingTransport = { id: 't1' };
+      router.createWebRtcTransport.mockResolvedValue(existingTransport);
+      await service.createTransport('room-1', 'peer-1', 'send');
+
+      const error = new Error('transport creation failed');
+      router.createWebRtcTransport.mockRejectedValue(error);
+
+      await expect(
+        service.createTransport('room-1', 'peer-1', 'recv'),
+      ).rejects.toThrow(error);
+
+      expect(room.getPeer('peer-1')?.sendTransport).toBe(existingTransport);
     });
   });
 
@@ -328,6 +368,19 @@ describe('MediaRoomsService', () => {
       await expect(
         service.pauseProducer('room-1', 'peer-1', 'missing'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException for a producer left closed by its transport being replaced', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const producer = { closed: true, pause: jest.fn(), resume: jest.fn() };
+      peer.producers.set('prod-1', producer as any);
+
+      await expect(
+        service.pauseProducer('room-1', 'peer-1', 'prod-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(producer.pause).not.toHaveBeenCalled();
     });
   });
 

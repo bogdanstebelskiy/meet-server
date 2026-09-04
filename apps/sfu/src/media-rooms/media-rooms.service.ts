@@ -4,6 +4,8 @@ import type {
   MediaKind,
   RtpCapabilities,
   RtpParameters,
+  WebRtcTransport,
+  Worker,
 } from 'mediasoup/types';
 import { TRANSPORT_DIRECTIONS } from '@app/media-contracts';
 import type { TransportDirection } from '@app/media-contracts';
@@ -48,14 +50,23 @@ export class MediaRoomsService {
   }
 
   private async createRoom(roomId: string): Promise<MediaRoom> {
-    const worker = this.workerPool.getWorker();
-    const router = await worker.createRouter({ mediaCodecs });
-    this.workerPool.trackRouterCreated(worker);
+    const worker = this.workerPool.reserveWorker();
+    const router = await this.createRouterOrReleaseWorker(worker);
 
     const room = new MediaRoom(roomId, router, worker);
     this.rooms.set(roomId, room);
 
     return room;
+  }
+
+  private async createRouterOrReleaseWorker(worker: Worker) {
+    try {
+      return await worker.createRouter({ mediaCodecs });
+    } catch (error) {
+      // createRouter never resolved - give back the slot reserveWorker took.
+      this.workerPool.trackRouterClosed(worker);
+      throw error;
+    }
   }
 
   getRoom(roomId: string): MediaRoom {
@@ -84,27 +95,40 @@ export class MediaRoomsService {
     direction: TransportDirection,
   ) {
     const room = this.getRoom(roomId);
+    const peerExisted = room.getPeer(peerId) !== undefined;
     const peer = room.getOrCreatePeer(peerId);
 
-    const transport = await room.router.createWebRtcTransport({
-      listenInfos: [
-        {
-          protocol: 'udp',
-          ip: '0.0.0.0',
-          announcedAddress: this.webRtcConfig.announcedAddress,
-          portRange: this.webRtcConfig.portRange,
-        },
-        {
-          protocol: 'tcp',
-          ip: '0.0.0.0',
-          announcedAddress: this.webRtcConfig.announcedAddress,
-          portRange: this.webRtcConfig.portRange,
-        },
-      ],
-      enableUdp: true,
-      enableTcp: true,
-      preferUdp: true,
-    });
+    let transport: WebRtcTransport;
+
+    try {
+      transport = await room.router.createWebRtcTransport({
+        listenInfos: [
+          {
+            protocol: 'udp',
+            ip: '0.0.0.0',
+            announcedAddress: this.webRtcConfig.announcedAddress,
+            portRange: this.webRtcConfig.portRange,
+          },
+          {
+            protocol: 'tcp',
+            ip: '0.0.0.0',
+            announcedAddress: this.webRtcConfig.announcedAddress,
+            portRange: this.webRtcConfig.portRange,
+          },
+        ],
+        enableUdp: true,
+        enableTcp: true,
+        preferUdp: true,
+      });
+    } catch (error) {
+      // A brand-new peer with nothing else on it yet must not linger forever
+      // and block the room from ever being seen as empty.
+      if (!peerExisted) {
+        room.removePeer(peerId);
+      }
+
+      throw error;
+    }
 
     if (direction === TRANSPORT_DIRECTIONS.SEND) {
       // A retried createTransport call (client timeout, reconnect) must not
@@ -207,14 +231,9 @@ export class MediaRoomsService {
   }
 
   removePeer(roomId: string, peerId: string): void {
-    const room = this.getRoom(roomId);
-    const peer = room.getPeer(peerId);
+    this.getPeer(roomId, peerId);
 
-    if (!peer) {
-      throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
-    }
-
-    room.removePeer(peerId);
+    this.getRoom(roomId).removePeer(peerId);
   }
 
   // Mirrors apps/realtime's closeRoom: a no-op if peers remain, so a caller
@@ -238,7 +257,10 @@ export class MediaRoomsService {
     const peer = this.getPeer(roomId, peerId);
     const producer = peer.producers.get(producerId);
 
-    if (!producer) {
+    // A producer closes when its transport is replaced by a retry, but this
+    // peer's producers map isn't told - so a stale id must 404, not throw
+    // mediasoup's closed-resource error.
+    if (!producer || producer.closed) {
       throw new NotFoundException(
         `Producer ${producerId} not found for peer ${peerId}`,
       );

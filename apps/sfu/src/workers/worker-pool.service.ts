@@ -46,7 +46,9 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  getWorker(): Worker {
+  // Reserves the slot synchronously so a concurrent burst can't all read
+  // the same pre-burst counts and pile onto one worker.
+  reserveWorker(): Worker {
     if (this.workers.length === 0) {
       throw new Error(
         'No mediasoup workers available - onModuleInit has not run yet',
@@ -65,17 +67,9 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    this.routersPerWorker.set(chosen, min + 1);
+
     return chosen;
-  }
-
-  trackRouterCreated(worker: Worker): void {
-    const count = this.routersPerWorker.get(worker);
-
-    if (count === undefined) {
-      return;
-    }
-
-    this.routersPerWorker.set(worker, count + 1);
   }
 
   trackRouterClosed(worker: Worker): void {
