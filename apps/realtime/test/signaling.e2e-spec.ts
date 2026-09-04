@@ -564,4 +564,25 @@ describe('Signaling (e2e)', () => {
       );
     });
   });
+
+  describe('chat over WS', () => {
+    it('sends a chat message and reads it back from history, proving ChatGatewayModule is actually wired into AppModule', async () => {
+      const alice = await connectClient();
+      const roomId = 'chat-room';
+
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+
+      const chatMessage = waitForEvent(alice, 'chatMessage');
+      const sendAck = await emitAsync(alice, 'sendChatMessage', {
+        body: 'hello',
+      });
+      expect(sendAck).toEqual({ ok: true });
+      await chatMessage;
+
+      const history = await emitAsync(alice, 'getChatHistory', {});
+      expect(history.messages).toEqual([
+        expect.objectContaining({ peerId: alice.id, body: 'hello' }),
+      ]);
+    });
+  });
 });
