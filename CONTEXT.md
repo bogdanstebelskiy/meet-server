@@ -16,6 +16,10 @@ _Avoid_: Room (when specifically meaning the mediasoup-object-holding side), Ses
 One participant's presence in a **Room** — id, display name, and (from the realtime side) the ids of producers they've published. The `sfu` side tracks the same peer id but only to key its transports/producers/consumers, not identity.
 _Avoid_: Participant, User, Client
 
+**Session** (see issue #7):
+The mapping of a **Room**'s id to the specific `sfu` instance holding that room's **MediaRoom**/`Router` — sticky routing, not peer liveness. TTL-refreshed by participant activity (coalesced updates), assigned once when a room's session is first created. Distinct from a **Peer**'s presence in a **Room**, which issue #6 makes independent of any single `realtime` instance.
+_Avoid_: using "session" to mean a peer's connection/liveness — that concept doesn't have a name yet in this codebase
+
 ## Relationships
 
 - A **Room** and a **MediaRoom** share the same id but live in different apps (`realtime` and `sfu` respectively) and are never the same object.
