@@ -30,12 +30,9 @@ function listenOnEphemeralPort(app: INestApplication): Promise<string> {
 }
 
 function fakeDtlsParameters() {
-  const fingerprint = crypto
-    .randomBytes(32)
-    .toString('hex')
-    .toUpperCase()
-    .match(/.{2}/g)!
-    .join(':');
+  const randomHex = crypto.randomBytes(32).toString('hex').toUpperCase();
+  const hexPairs = randomHex.match(/.{2}/g)!;
+  const fingerprint = hexPairs.join(':');
 
   return {
     role: 'client',
@@ -86,23 +83,33 @@ describe('Cross-instance realtime scaling (e2e)', () => {
     // compiles - must be set first, shared by both instances.
     process.env.SFU_SERVICE_URL = sfuServiceUrl;
 
-    const moduleA: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    instanceA = moduleA.createNestApplication();
     // The default in-memory socket.io adapter can't cross-broadcast between
     // two separate Nest apps - wire the same redis-adapter main.ts uses.
-    adapterA = createRedisIoAdapter(instanceA);
-    instanceA.useWebSocketAdapter(adapterA);
-    baseUrlA = await listenOnEphemeralPort(instanceA);
+    async function bootRealtimeInstance() {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+      const app = moduleFixture.createNestApplication();
+      const adapter = createRedisIoAdapter(app);
+      app.useWebSocketAdapter(adapter);
+      const baseUrl = await listenOnEphemeralPort(app);
 
-    const moduleB: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    instanceB = moduleB.createNestApplication();
-    adapterB = createRedisIoAdapter(instanceB);
-    instanceB.useWebSocketAdapter(adapterB);
-    baseUrlB = await listenOnEphemeralPort(instanceB);
+      return { app, adapter, baseUrl };
+    }
+
+    // Neither instance depends on the other - only on sfuServiceUrl above.
+    const [instA, instB] = await Promise.all([
+      bootRealtimeInstance(),
+      bootRealtimeInstance(),
+    ]);
+
+    instanceA = instA.app;
+    adapterA = instA.adapter;
+    baseUrlA = instA.baseUrl;
+
+    instanceB = instB.app;
+    adapterB = instB.adapter;
+    baseUrlB = instB.baseUrl;
   });
 
   afterAll(async () => {
@@ -218,12 +225,13 @@ describe('Cross-instance realtime scaling (e2e)', () => {
       roomId: 'cross-instance-room',
       displayName: 'Carol',
     });
-    expect(carolJoin.existingPeers).toEqual(
-      expect.arrayContaining([
-        { id: alice.id, displayName: 'Alice' },
-        { id: bob.id, displayName: 'Bob' },
-      ]),
-    );
+    const sortById = (peers: { id: any; displayName: string }[]) =>
+      [...peers].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const expectedExistingPeers = sortById([
+      { id: alice.id, displayName: 'Alice' },
+      { id: bob.id, displayName: 'Bob' },
+    ]);
+    expect(sortById(carolJoin.existingPeers)).toEqual(expectedExistingPeers);
     expect(await carolNewProducer).toEqual({
       peerId: bob.id,
       producerId: produced.id,
