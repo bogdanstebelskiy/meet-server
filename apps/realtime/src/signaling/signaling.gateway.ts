@@ -50,8 +50,11 @@ export class SignalingGateway implements OnGatewayDisconnect {
   }
 
   @SubscribeMessage('getRouterRtpCapabilities')
-  getRouterRtpCapabilities(@RequireSocketContext() { roomId }: SocketContext) {
-    return this.signalingService.getRoom(roomId).rtpCapabilities;
+  async getRouterRtpCapabilities(
+    @RequireSocketContext() { roomId }: SocketContext,
+  ) {
+    const room = await this.signalingService.getRoom(roomId);
+    return room.rtpCapabilities;
   }
 
   @SubscribeMessage('createWebRtcTransport')
@@ -149,14 +152,14 @@ export class SignalingGateway implements OnGatewayDisconnect {
     return { resumed: true };
   }
 
-  handleDisconnect(client: SignalingSocket) {
+  async handleDisconnect(client: SignalingSocket) {
     const { roomId, peerId } = client.data;
 
     if (!roomId || !peerId) {
       return;
     }
 
-    this.signalingService.leave(roomId, peerId);
+    await this.signalingService.leave(roomId, peerId);
     client.to(roomId).emit('peerClosed', { peerId });
   }
 }

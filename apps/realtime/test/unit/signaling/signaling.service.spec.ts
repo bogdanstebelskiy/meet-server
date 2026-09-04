@@ -3,8 +3,6 @@ import { SignalingService } from '../../../src/signaling/signaling.service';
 import { RoomsService } from '../../../src/rooms/rooms.service';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
 import { ChatService } from '../../../src/chat/chat.service';
-import { Room } from '../../../src/rooms/entities/room.entity';
-import { Peer } from '../../../src/rooms/entities/peer.entity';
 
 describe('SignalingService', () => {
   let service: SignalingService;
@@ -12,7 +10,13 @@ describe('SignalingService', () => {
     getOrCreateRoom: jest.Mock;
     getRoom: jest.Mock;
     getPeer: jest.Mock;
+    getOtherPeers: jest.Mock;
+    addPeer: jest.Mock;
+    removePeer: jest.Mock;
+    isEmpty: jest.Mock;
     closeRoom: jest.Mock;
+    addProducer: jest.Mock;
+    getProducers: jest.Mock;
   };
   let sfuClient: {
     createTransport: jest.Mock;
@@ -26,18 +30,20 @@ describe('SignalingService', () => {
   let chatService: {
     deleteRoomHistory: jest.Mock;
   };
-  let room: Room;
+  const room = { id: 'room-1', rtpCapabilities: { codecs: [] } };
 
   beforeEach(() => {
-    room = new Room('room-1', { codecs: [] });
-
     roomsService = {
       getOrCreateRoom: jest.fn().mockResolvedValue(room),
-      getRoom: jest.fn().mockReturnValue(room),
-      getPeer: jest.fn((_roomId: string, peerId: string) =>
-        room.peers.get(peerId),
-      ),
-      closeRoom: jest.fn(),
+      getRoom: jest.fn().mockResolvedValue(room),
+      getPeer: jest.fn().mockResolvedValue(undefined),
+      getOtherPeers: jest.fn().mockResolvedValue([]),
+      addPeer: jest.fn().mockResolvedValue(undefined),
+      removePeer: jest.fn().mockResolvedValue(undefined),
+      isEmpty: jest.fn().mockResolvedValue(false),
+      closeRoom: jest.fn().mockResolvedValue(undefined),
+      addProducer: jest.fn().mockResolvedValue(undefined),
+      getProducers: jest.fn().mockResolvedValue([]),
     };
 
     sfuClient = {
@@ -63,8 +69,9 @@ describe('SignalingService', () => {
 
   describe('join', () => {
     it('adds a new peer to the room and returns the others already present', async () => {
-      const existingPeer = new Peer('peer-existing', 'Bob');
-      room.addPeer(existingPeer);
+      roomsService.getOtherPeers.mockResolvedValue([
+        { id: 'peer-existing', displayName: 'Bob' },
+      ]);
 
       const { peer, existingPeers } = await service.join(
         'room-1',
@@ -72,7 +79,11 @@ describe('SignalingService', () => {
         'Alice',
       );
 
-      expect(room.peers.get('peer-1')).toBe(peer);
+      expect(roomsService.addPeer).toHaveBeenCalledWith('room-1', {
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
+      expect(peer).toEqual({ id: 'peer-1', displayName: 'Alice' });
       expect(existingPeers).toEqual([
         { id: 'peer-existing', displayName: 'Bob' },
       ]);
@@ -81,17 +92,29 @@ describe('SignalingService', () => {
     it('does not include the joining peer itself in existingPeers', async () => {
       const { existingPeers } = await service.join('room-1', 'peer-1', 'Alice');
 
+      expect(roomsService.getOtherPeers).toHaveBeenCalledWith(
+        'room-1',
+        'peer-1',
+      );
       expect(existingPeers).toEqual([]);
     });
 
     it('collects existing producers from other peers', async () => {
-      const bob = new Peer('peer-bob', 'Bob');
-      bob.producers.set('prod-audio', 'audio');
-      bob.producers.set('prod-video', 'video');
-      const carol = new Peer('peer-carol', 'Carol');
-      carol.producers.set('prod-carol', 'audio');
-      room.addPeer(bob);
-      room.addPeer(carol);
+      roomsService.getOtherPeers.mockResolvedValue([
+        { id: 'peer-bob', displayName: 'Bob' },
+        { id: 'peer-carol', displayName: 'Carol' },
+      ]);
+      roomsService.getProducers.mockImplementation(
+        async (_roomId: string, peerId: string) => {
+          if (peerId === 'peer-bob') {
+            return [
+              { producerId: 'prod-audio', kind: 'audio' },
+              { producerId: 'prod-video', kind: 'video' },
+            ];
+          }
+          return [{ producerId: 'prod-carol', kind: 'audio' }];
+        },
+      );
 
       const { existingProducers } = await service.join(
         'room-1',
@@ -110,8 +133,9 @@ describe('SignalingService', () => {
     });
 
     it('returns empty existingProducers when nobody is producing', async () => {
-      const bob = new Peer('peer-bob', 'Bob');
-      room.addPeer(bob);
+      roomsService.getOtherPeers.mockResolvedValue([
+        { id: 'peer-bob', displayName: 'Bob' },
+      ]);
 
       const { existingProducers } = await service.join(
         'room-1',
@@ -124,23 +148,27 @@ describe('SignalingService', () => {
   });
 
   describe('getRoom / getPeer', () => {
-    it('throws NotFoundException for an unknown room', () => {
-      roomsService.getRoom.mockReturnValue(undefined);
+    it('throws NotFoundException for an unknown room', async () => {
+      roomsService.getRoom.mockResolvedValue(undefined);
 
-      expect(() => service.getRoom('missing')).toThrow(NotFoundException);
+      await expect(service.getRoom('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
-    it('throws NotFoundException for an unknown peer in a known room', () => {
-      expect(() => service.getPeer('room-1', 'missing')).toThrow(
+    it('throws NotFoundException for an unknown peer in a known room', async () => {
+      await expect(service.getPeer('room-1', 'missing')).rejects.toThrow(
         NotFoundException,
       );
     });
   });
 
   describe('createWebRtcTransport', () => {
-    it('delegates to the SfuClient once the room and peer are known locally', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+    it('delegates to the SfuClient once the room and peer are known', async () => {
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
       const transport = { id: 't1' };
       sfuClient.createTransport.mockResolvedValue(transport);
 
@@ -168,8 +196,10 @@ describe('SignalingService', () => {
 
   describe('connectWebRtcTransport', () => {
     it('delegates to the SfuClient with the transport id and dtlsParameters', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
 
       await service.connectWebRtcTransport('room-1', 'peer-1', 't1', {
         role: 'client',
@@ -193,8 +223,10 @@ describe('SignalingService', () => {
 
   describe('produce', () => {
     it('delegates to the SfuClient and records the producer kind for backfill', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
       sfuClient.produce.mockResolvedValue({ id: 'prod-1' });
 
       const result = await service.produce(
@@ -213,7 +245,12 @@ describe('SignalingService', () => {
         'audio',
         {},
       );
-      expect(peer.producers.get('prod-1')).toBe('audio');
+      expect(roomsService.addProducer).toHaveBeenCalledWith(
+        'room-1',
+        'peer-1',
+        'prod-1',
+        'audio',
+      );
     });
 
     it('throws NotFoundException for an unknown peer without calling the SfuClient', async () => {
@@ -226,8 +263,10 @@ describe('SignalingService', () => {
 
   describe('consume', () => {
     it('delegates to the SfuClient and returns its response as-is', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
       const consumeResponse = {
         id: 'cons-1',
         producerId: 'prod-1',
@@ -258,8 +297,10 @@ describe('SignalingService', () => {
 
   describe('resumeConsumer', () => {
     it('delegates to the SfuClient', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
 
       await service.resumeConsumer('room-1', 'peer-1', 'cons-1');
 
@@ -280,8 +321,10 @@ describe('SignalingService', () => {
 
   describe('pauseProducer / resumeProducer', () => {
     it('pauseProducer delegates to the SfuClient', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
 
       await service.pauseProducer('room-1', 'peer-1', 'prod-1');
 
@@ -293,8 +336,10 @@ describe('SignalingService', () => {
     });
 
     it('resumeProducer delegates to the SfuClient', async () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
 
       await service.resumeProducer('room-1', 'peer-1', 'prod-1');
 
@@ -307,32 +352,31 @@ describe('SignalingService', () => {
   });
 
   describe('leave', () => {
-    it('is a no-op when the room does not exist', () => {
-      roomsService.getRoom.mockReturnValue(undefined);
+    it('is a no-op when the room does not exist', async () => {
+      roomsService.getRoom.mockResolvedValue(undefined);
 
-      expect(() => service.leave('missing', 'peer-1')).not.toThrow();
+      await expect(service.leave('missing', 'peer-1')).resolves.not.toThrow();
+      expect(roomsService.removePeer).not.toHaveBeenCalled();
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
     });
 
-    it('removes the peer but does not close the room while others remain', () => {
-      const peer1 = new Peer('peer-1', 'Alice');
-      const peer2 = new Peer('peer-2', 'Bob');
-      room.addPeer(peer1);
-      room.addPeer(peer2);
+    it('removes the peer but does not close the room while others remain', async () => {
+      roomsService.isEmpty.mockResolvedValue(false);
 
-      service.leave('room-1', 'peer-1');
+      await service.leave('room-1', 'peer-1');
 
-      expect(room.peers.has('peer-1')).toBe(false);
-      expect(room.peers.has('peer-2')).toBe(true);
+      expect(roomsService.removePeer).toHaveBeenCalledWith(
+        'room-1',
+        'peer-1',
+      );
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
     });
 
-    it('closes the room and deletes its chat history once the last peer leaves', () => {
-      const peer = new Peer('peer-1', 'Alice');
-      room.addPeer(peer);
+    it('closes the room and deletes its chat history once the last peer leaves', async () => {
+      roomsService.isEmpty.mockResolvedValue(true);
 
-      service.leave('room-1', 'peer-1');
+      await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');

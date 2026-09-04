@@ -118,11 +118,11 @@ describe('SignalingGateway', () => {
   // These handlers take context directly, not the socket: calling the method
   // here bypasses Nest's param-decorator pipeline, so we pass it ourselves.
   describe('getRouterRtpCapabilities', () => {
-    it('returns the room rtpCapabilities for the given roomId', () => {
+    it('returns the room rtpCapabilities for the given roomId', async () => {
       const rtpCapabilities = { codecs: [] };
-      signalingService.getRoom.mockReturnValue({ rtpCapabilities });
+      signalingService.getRoom.mockResolvedValue({ rtpCapabilities });
 
-      const result = gateway.getRouterRtpCapabilities({
+      const result = await gateway.getRouterRtpCapabilities({
         roomId: 'room-1',
         peerId: 'socket-1',
       });
@@ -215,19 +215,19 @@ describe('SignalingGateway', () => {
   });
 
   describe('handleDisconnect', () => {
-    it('is a no-op when the socket disconnects without ever having joined a room', () => {
+    it('is a no-op when the socket disconnects without ever having joined a room', async () => {
       const client = createFakeClient();
 
-      gateway.handleDisconnect(client);
+      await gateway.handleDisconnect(client);
 
       expect(signalingService.leave).not.toHaveBeenCalled();
       expect(client.to).not.toHaveBeenCalled();
     });
 
-    it('tells the service to leave and broadcasts peerClosed when the socket had joined', () => {
+    it('tells the service to leave and broadcasts peerClosed when the socket had joined', async () => {
       const client = createFakeClient({ roomId: 'room-1', peerId: 'socket-1' });
 
-      gateway.handleDisconnect(client);
+      await gateway.handleDisconnect(client);
 
       expect(signalingService.leave).toHaveBeenCalledWith('room-1', 'socket-1');
       expect(client.to).toHaveBeenCalledWith('room-1');

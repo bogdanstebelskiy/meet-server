@@ -29,7 +29,7 @@ export class ChatGateway {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { body }: SendChatMessagePayload,
   ) {
-    const peer = this.roomsService.getPeer(roomId, peerId);
+    const peer = await this.roomsService.getPeer(roomId, peerId);
 
     if (!peer) {
       throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);

@@ -22,29 +22,34 @@ export class SignalingService {
   ) {}
 
   async join(roomId: string, peerId: string, displayName: string) {
-    const room = await this.roomsService.getOrCreateRoom(roomId);
-    const otherPeers = room.getOtherPeers(peerId);
+    await this.roomsService.getOrCreateRoom(roomId);
+    const otherPeers = await this.roomsService.getOtherPeers(roomId, peerId);
     const existingPeers = otherPeers.map((peer) => ({
       id: peer.id,
       displayName: peer.displayName,
     }));
 
-    const existingProducers = otherPeers.flatMap((peer) =>
-      [...peer.producers.entries()].map(([producerId, kind]) => ({
+    const producerFetchPromises = otherPeers.map(async (peer) => {
+      const producers = await this.roomsService.getProducers(roomId, peer.id);
+      const producersWithPeerId = producers.map(({ producerId, kind }) => ({
         peerId: peer.id,
         producerId,
         kind,
-      })),
-    );
+      }));
+      return producersWithPeerId;
+    });
 
-    const peer = new Peer(peerId, displayName);
-    room.addPeer(peer);
+    const producersByPeer = await Promise.all(producerFetchPromises);
+    const existingProducers = producersByPeer.flat();
+
+    const peer: Peer = { id: peerId, displayName };
+    await this.roomsService.addPeer(roomId, peer);
 
     return { peer, existingPeers, existingProducers };
   }
 
-  getRoom(roomId: string) {
-    const room = this.roomsService.getRoom(roomId);
+  async getRoom(roomId: string) {
+    const room = await this.roomsService.getRoom(roomId);
 
     if (!room) {
       throw new NotFoundException(`Room ${roomId} not found`);
@@ -53,8 +58,8 @@ export class SignalingService {
     return room;
   }
 
-  getPeer(roomId: string, peerId: string): Peer {
-    const peer = this.roomsService.getPeer(roomId, peerId);
+  async getPeer(roomId: string, peerId: string): Promise<Peer> {
+    const peer = await this.roomsService.getPeer(roomId, peerId);
 
     if (!peer) {
       throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
@@ -68,7 +73,7 @@ export class SignalingService {
     peerId: string,
     direction: TransportDirection,
   ) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     return this.sfuClient.createTransport(roomId, peerId, direction);
   }
@@ -79,7 +84,7 @@ export class SignalingService {
     transportId: string,
     dtlsParameters: DtlsParameters,
   ) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     await this.sfuClient.connectTransport(
       roomId,
@@ -96,7 +101,7 @@ export class SignalingService {
     kind: MediaKind,
     rtpParameters: RtpParameters,
   ) {
-    const peer = this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     const { id } = await this.sfuClient.produce(
       roomId,
@@ -105,7 +110,7 @@ export class SignalingService {
       kind,
       rtpParameters,
     );
-    peer.producers.set(id, kind);
+    await this.roomsService.addProducer(roomId, peerId, id, kind);
 
     return { id };
   }
@@ -116,40 +121,41 @@ export class SignalingService {
     producerId: string,
     rtpCapabilities: RtpCapabilities,
   ) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     return this.sfuClient.consume(roomId, peerId, producerId, rtpCapabilities);
   }
 
   async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     await this.sfuClient.resumeConsumer(roomId, peerId, consumerId);
   }
 
   async pauseProducer(roomId: string, peerId: string, producerId: string) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     await this.sfuClient.pauseProducer(roomId, peerId, producerId);
   }
 
   async resumeProducer(roomId: string, peerId: string, producerId: string) {
-    this.getPeer(roomId, peerId);
+    await this.getPeer(roomId, peerId);
 
     await this.sfuClient.resumeProducer(roomId, peerId, producerId);
   }
 
-  leave(roomId: string, peerId: string): void {
-    const room = this.roomsService.getRoom(roomId);
+  async leave(roomId: string, peerId: string): Promise<void> {
+    const room = await this.roomsService.getRoom(roomId);
 
     if (!room) {
       return;
     }
 
-    room.removePeer(peerId);
+    await this.roomsService.removePeer(roomId, peerId);
 
-    if (room.isEmpty()) {
-      this.roomsService.closeRoom(roomId);
+    const isRoomEmpty = await this.roomsService.isEmpty(roomId);
+    if (isRoomEmpty) {
+      await this.roomsService.closeRoom(roomId);
       this.chatService
         .deleteRoomHistory(roomId)
         .catch((error) =>
