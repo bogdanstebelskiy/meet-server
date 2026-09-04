@@ -23,16 +23,26 @@ export class SignalingService {
 
   async join(roomId: string, peerId: string, displayName: string) {
     await this.roomsService.getOrCreateRoom(roomId);
+
+    // Add this peer before reading others, not after - otherwise two peers
+    // joining a brand-new room at the same instant can each read the peers
+    // hash before the other's write lands, and neither sees the other.
+    const peer: Peer = { id: peerId, displayName };
+    await this.roomsService.addPeer(roomId, peer);
+
     const otherPeers = await this.roomsService.getOtherPeers(roomId, peerId);
-    const existingPeers = otherPeers.map((peer) => ({
-      id: peer.id,
-      displayName: peer.displayName,
+    const existingPeers = otherPeers.map((otherPeer) => ({
+      id: otherPeer.id,
+      displayName: otherPeer.displayName,
     }));
 
-    const producerFetchPromises = otherPeers.map(async (peer) => {
-      const producers = await this.roomsService.getProducers(roomId, peer.id);
+    const producerFetchPromises = otherPeers.map(async (otherPeer) => {
+      const producers = await this.roomsService.getProducers(
+        roomId,
+        otherPeer.id,
+      );
       const producersWithPeerId = producers.map(({ producerId, kind }) => ({
-        peerId: peer.id,
+        peerId: otherPeer.id,
         producerId,
         kind,
       }));
@@ -41,9 +51,6 @@ export class SignalingService {
 
     const producersByPeer = await Promise.all(producerFetchPromises);
     const existingProducers = producersByPeer.flat();
-
-    const peer: Peer = { id: peerId, displayName };
-    await this.roomsService.addPeer(roomId, peer);
 
     return { peer, existingPeers, existingProducers };
   }
