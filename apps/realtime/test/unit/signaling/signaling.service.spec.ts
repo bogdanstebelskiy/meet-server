@@ -43,7 +43,7 @@ describe('SignalingService', () => {
       addPeer: jest.fn().mockResolvedValue(undefined),
       removePeer: jest.fn().mockResolvedValue(undefined),
       isEmpty: jest.fn().mockResolvedValue(false),
-      closeRoom: jest.fn().mockResolvedValue(undefined),
+      closeRoom: jest.fn().mockResolvedValue(true),
       addProducer: jest.fn().mockResolvedValue(undefined),
       getProducers: jest.fn().mockResolvedValue([]),
     };
@@ -395,12 +395,24 @@ describe('SignalingService', () => {
 
     it('closes the room in apps/sfu and deletes its chat history once the last peer leaves', async () => {
       roomsService.isEmpty.mockResolvedValue(true);
+      roomsService.closeRoom.mockResolvedValue(true);
 
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
       expect(sfuClient.closeRoom).toHaveBeenCalledWith('room-1');
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
+    });
+
+    it('does not close the room in apps/sfu or delete chat history when a peer joins between the emptiness check and the redis close (issue #24)', async () => {
+      roomsService.isEmpty.mockResolvedValue(true);
+      roomsService.closeRoom.mockResolvedValue(false);
+
+      await service.leave('room-1', 'peer-1');
+
+      expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.closeRoom).not.toHaveBeenCalled();
+      expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
     });
 
     it('waits for the sfu peer removal to land before closing the room there, so a still-in-flight removal never loses the closeRoom race', async () => {

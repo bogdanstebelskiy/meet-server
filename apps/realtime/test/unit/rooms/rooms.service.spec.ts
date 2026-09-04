@@ -181,11 +181,11 @@ describe('RoomsService', () => {
       expect(await service.getProducers('room-1', 'peer-1')).toEqual([]);
     });
 
-    it('closeRoom is a no-op for an unknown room', async () => {
-      await expect(service.closeRoom('missing')).resolves.not.toThrow();
+    it('closeRoom is a no-op for an unknown room, but reports it closed', async () => {
+      await expect(service.closeRoom('missing')).resolves.toBe(true);
     });
 
-    it('closeRoom forgets the room, its peers, and their producers', async () => {
+    it('closeRoom forgets the room, its peers, and their producers, and reports it closed', async () => {
       sfuClient.createOrGetMediaRoom.mockResolvedValue({
         roomId: 'room-1',
         rtpCapabilities: {},
@@ -195,14 +195,14 @@ describe('RoomsService', () => {
       await service.addProducer('room-1', 'peer-1', 'prod-1', 'audio');
       await service.removePeer('room-1', 'peer-1');
 
-      await service.closeRoom('room-1');
+      await expect(service.closeRoom('room-1')).resolves.toBe(true);
 
       expect(await service.getRoom('room-1')).toBeUndefined();
       expect(await service.getPeer('room-1', 'peer-1')).toBeUndefined();
       expect(await service.getProducers('room-1', 'peer-1')).toEqual([]);
     });
 
-    it('does not wipe a peer that joins between the emptiness check and the delete (issue #24)', async () => {
+    it('does not wipe a peer that joins between the emptiness check and the delete, and reports it did not close (issue #24)', async () => {
       sfuClient.createOrGetMediaRoom.mockResolvedValue({
         roomId: 'room-1',
         rtpCapabilities: {},
@@ -220,7 +220,7 @@ describe('RoomsService', () => {
         return originalHkeys(key);
       });
 
-      await service.closeRoom('room-1');
+      await expect(service.closeRoom('room-1')).resolves.toBe(false);
 
       expect(await service.getRoom('room-1')).toEqual({
         id: 'room-1',

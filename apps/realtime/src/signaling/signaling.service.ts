@@ -183,21 +183,33 @@ export class SignalingService {
     }
 
     const isRoomEmpty = await this.roomsService.isEmpty(roomId);
-    if (isRoomEmpty) {
-      await this.roomsService.closeRoom(roomId);
-      this.sfuClient
-        .closeRoom(roomId)
-        .catch((error) =>
-          this.logger.error(`Failed to close sfu room ${roomId}`, error),
-        );
-      this.chatService
-        .deleteRoomHistory(roomId)
-        .catch((error) =>
-          this.logger.error(
-            `Failed to delete chat history for room ${roomId}`,
-            error,
-          ),
-        );
+    if (!isRoomEmpty) {
+      return;
     }
+
+    // closeRoom re-checks emptiness atomically and can find a peer that
+    // joined since the isEmpty() read above (issue #24) - only tear down
+    // apps/sfu and chat history if it actually closed here, otherwise a
+    // still-occupied room loses its sfu MediaRoom or chat history under
+    // that same race.
+    const closed = await this.roomsService.closeRoom(roomId);
+
+    if (!closed) {
+      return;
+    }
+
+    this.sfuClient
+      .closeRoom(roomId)
+      .catch((error) =>
+        this.logger.error(`Failed to close sfu room ${roomId}`, error),
+      );
+    this.chatService
+      .deleteRoomHistory(roomId)
+      .catch((error) =>
+        this.logger.error(
+          `Failed to delete chat history for room ${roomId}`,
+          error,
+        ),
+      );
   }
 }

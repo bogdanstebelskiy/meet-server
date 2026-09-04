@@ -68,6 +68,32 @@ const ROOM_TTL_SECONDS = 60 * 60 * 24;
 export const ROOM_TTL_SECONDS = 60 * 60 * 24;
 ```
 
+Use guard clauses instead of nesting the rest of a function inside an `if`. When a condition means "there's nothing more to do," return early rather than wrapping everything that follows in an `if` block — nesting should stay flat, not grow one level per condition checked.
+
+```ts
+// avoid
+const isRoomEmpty = await this.roomsService.isEmpty(roomId);
+if (isRoomEmpty) {
+  const closed = await this.roomsService.closeRoom(roomId);
+  if (closed) {
+    await this.sfuClient.closeRoom(roomId);
+  }
+}
+
+// prefer
+const isRoomEmpty = await this.roomsService.isEmpty(roomId);
+if (!isRoomEmpty) {
+  return;
+}
+
+const closed = await this.roomsService.closeRoom(roomId);
+if (!closed) {
+  return;
+}
+
+await this.sfuClient.closeRoom(roomId);
+```
+
 Prefer `async`/`await` with `try`/`catch`/`finally` over chaining `.then()`/`.catch()`/`.finally()` directly on a promise.
 
 ```ts

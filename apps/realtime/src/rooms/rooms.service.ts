@@ -94,9 +94,8 @@ export class RoomsService {
   // Sequential, best-effort (no MULTI/Lua transaction): a crash between
   // these two deletes can orphan the producers hash, which its own TTL
   // cleans up - see the room/peer/producer keys' shared TTL rationale below.
-  // apps/sfu has no per-peer teardown endpoint yet (tracked in #18), so this
-  // only forgets the Peer here - its transports/producers/consumers leak in
-  // apps/sfu until that lands.
+  // Only forgets the Peer here - apps/sfu teardown (removePeer/closeRoom) is
+  // a separate call, made by SignalingService.leave() right after this.
   async removePeer(roomId: string, peerId: string): Promise<void> {
     const peersKey = this.peersKey(roomId);
     await this.redis.hdel(peersKey, peerId);
@@ -116,7 +115,7 @@ export class RoomsService {
   // The join-during-close race (#24) is closed by closeRoomIfEmpty (a Lua
   // script, see redis-scripts.ts): it re-checks and deletes the peers hash
   // in one atomic server-side step.
-  async closeRoom(roomId: string): Promise<void> {
+  async closeRoom(roomId: string): Promise<boolean> {
     const peersKey = this.peersKey(roomId);
     const peerIds = await this.redis.hkeys(peersKey);
 
@@ -124,7 +123,7 @@ export class RoomsService {
     const closed = await this.redis.closeRoomIfEmpty(peersKey, roomKey);
 
     if (!closed) {
-      return;
+      return false;
     }
 
     const deleteProducerPromises = peerIds.map((peerId) => {
@@ -132,6 +131,8 @@ export class RoomsService {
       return this.redis.del(producersKey);
     });
     await Promise.all(deleteProducerPromises);
+
+    return true;
   }
 
   async addProducer(
