@@ -365,10 +365,7 @@ describe('SignalingService', () => {
 
       await service.leave('room-1', 'peer-1');
 
-      expect(roomsService.removePeer).toHaveBeenCalledWith(
-        'room-1',
-        'peer-1',
-      );
+      expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
     });

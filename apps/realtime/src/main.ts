@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { createRedisIoAdapter } from './redis/redis-io.adapter';
 
 function loadHttpsOptions() {
   // __dirname is dist/apps/realtime at runtime (nest build's monorepo
@@ -22,6 +23,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     httpsOptions: loadHttpsOptions(),
   });
+
+  const redisIoAdapter = createRedisIoAdapter(app);
+  app.useWebSocketAdapter(redisIoAdapter);
+
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

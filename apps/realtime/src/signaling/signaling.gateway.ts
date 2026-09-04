@@ -20,7 +20,7 @@ import type {
 } from './payloads';
 import type { SignalingSocket, SocketContext } from './types';
 
-@WebSocketGateway({ cors: true })
+@WebSocketGateway({ cors: true, transports: ['websocket'] })
 @UseFilters(new WsExceptionFilter())
 export class SignalingGateway implements OnGatewayDisconnect {
   constructor(private readonly signalingService: SignalingService) {}
