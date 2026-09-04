@@ -26,6 +26,13 @@ export class RoomsService {
   async getOrCreateRoom(roomId: string): Promise<Room> {
     const existing = await this.getRoom(roomId);
     if (existing) {
+      // Refresh on every join, same as addPeer/addProducer do for their own
+      // keys - otherwise this key expires on schedule even under a room
+      // with continuous activity, while the peers/producers hashes (kept
+      // alive by those refreshes) don't, splitting one room's state across
+      // two different lifetimes.
+      const roomKey = this.roomKey(roomId);
+      await this.redis.expire(roomKey, ROOM_TTL_SECONDS);
       return existing;
     }
 
@@ -105,11 +112,15 @@ export class RoomsService {
   }
 
   // Sequential, best-effort (no MULTI/Lua transaction), same as removePeer.
-  // Known gap: a realtime instance dying uncleanly (crash/OOM) between a
+  // Known gap #1: a realtime instance dying uncleanly (crash/OOM) between a
   // peer joining and this running never fires closeRoom at all, so other
   // instances keep serving that peer as present until issue #7's
   // liveness/TTL mechanism lands - the TTL on every key below is the only
   // safety net for that case today.
+  // Known gap #2 (issue #24): no crash needed - a peer joining in the window
+  // between the caller's isEmpty() check and this method's own hkeys()+del()
+  // gets wiped from the peers hash it just joined, since nothing here
+  // re-checks emptiness atomically with the delete.
   async closeRoom(roomId: string): Promise<void> {
     const peersKey = this.peersKey(roomId);
     const peerIds = await this.redis.hkeys(peersKey);

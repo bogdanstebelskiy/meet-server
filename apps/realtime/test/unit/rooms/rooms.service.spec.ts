@@ -64,6 +64,20 @@ describe('RoomsService', () => {
       expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledTimes(1);
     });
 
+    it('refreshes the room key TTL on every call, not just on creation', async () => {
+      sfuClient.createOrGetMediaRoom.mockResolvedValue({
+        roomId: 'room-1',
+        rtpCapabilities: {},
+      });
+      const expireSpy = jest.spyOn(redis, 'expire');
+
+      await service.getOrCreateRoom('room-1');
+      expireSpy.mockClear();
+      await service.getOrCreateRoom('room-1');
+
+      expect(expireSpy).toHaveBeenCalledWith('room:room-1', 60 * 60 * 24);
+    });
+
     it('dedupes concurrent creation for the same brand-new room (no lost peer state)', async () => {
       let resolveMediaRoom!: (value: unknown) => void;
       sfuClient.createOrGetMediaRoom.mockReturnValue(
