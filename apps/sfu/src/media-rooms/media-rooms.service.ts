@@ -182,7 +182,10 @@ export class MediaRoomsService {
     const peer = this.getPeer(roomId, peerId);
     const consumer = peer.consumers.get(consumerId);
 
-    if (!consumer) {
+    // A consumer closes when its producer's peer is removed, but this peer's
+    // consumers map isn't told - so a stale id must 404 rather than throw
+    // mediasoup's closed-resource error.
+    if (!consumer || consumer.closed) {
       throw new NotFoundException(
         `Consumer ${consumerId} not found for peer ${peerId}`,
       );
@@ -201,6 +204,34 @@ export class MediaRoomsService {
     const producer = this.findProducer(roomId, peerId, producerId);
 
     await producer.resume();
+  }
+
+  removePeer(roomId: string, peerId: string): void {
+    const room = this.getRoom(roomId);
+    const peer = room.getPeer(peerId);
+
+    if (!peer) {
+      throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
+    }
+
+    room.removePeer(peerId);
+  }
+
+  // Mirrors apps/realtime's closeRoom: a no-op if peers remain, so a caller
+  // can call this unconditionally after removePeer without racing a
+  // concurrent join.
+  closeRoom(roomId: string): boolean {
+    const room = this.getRoom(roomId);
+
+    if (!room.isEmpty()) {
+      return false;
+    }
+
+    room.close();
+    this.workerPool.trackRouterClosed(room.worker);
+    this.rooms.delete(roomId);
+
+    return true;
   }
 
   private findProducer(roomId: string, peerId: string, producerId: string) {

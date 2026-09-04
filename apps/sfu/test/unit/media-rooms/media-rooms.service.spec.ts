@@ -15,6 +15,7 @@ describe('MediaRoomsService', () => {
     rtpCapabilities: unknown;
     createWebRtcTransport: jest.Mock;
     canConsume: jest.Mock;
+    close: jest.Mock;
   };
 
   const createFakeWorker = () => ({ createRouter: jest.fn() });
@@ -24,6 +25,7 @@ describe('MediaRoomsService', () => {
       rtpCapabilities: { codecs: [] },
       createWebRtcTransport: jest.fn(),
       canConsume: jest.fn().mockReturnValue(true),
+      close: jest.fn(),
     };
 
     workerPool = {
@@ -278,6 +280,19 @@ describe('MediaRoomsService', () => {
         service.resumeConsumer('room-1', 'peer-1', 'missing'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it("throws NotFoundException for a consumer left closed by its producer's peer being removed", async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const consumer = { closed: true, resume: jest.fn() };
+      peer.consumers.set('cons-1', consumer as any);
+
+      await expect(
+        service.resumeConsumer('room-1', 'peer-1', 'cons-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(consumer.resume).not.toHaveBeenCalled();
+    });
   });
 
   describe('pauseProducer / resumeProducer', () => {
@@ -313,6 +328,72 @@ describe('MediaRoomsService', () => {
       await expect(
         service.pauseProducer('room-1', 'peer-1', 'missing'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('removePeer', () => {
+    it('closes the peer send and recv transports and forgets the peer', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      const peer = room.getOrCreatePeer('peer-1');
+      const sendTransport = { close: jest.fn() };
+      const recvTransport = { close: jest.fn() };
+      peer.sendTransport = sendTransport as any;
+      peer.recvTransport = recvTransport as any;
+
+      service.removePeer('room-1', 'peer-1');
+
+      expect(sendTransport.close).toHaveBeenCalledTimes(1);
+      expect(recvTransport.close).toHaveBeenCalledTimes(1);
+      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException for an unknown peer', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+
+      expect(() => service.removePeer('room-1', 'missing')).toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException for an unknown room', () => {
+      expect(() => service.removePeer('missing', 'peer-1')).toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('closeRoom', () => {
+    it('closes the router and reports the freed worker slot once the room is empty', async () => {
+      const worker = stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+
+      const closed = service.closeRoom('room-1');
+
+      expect(closed).toBe(true);
+      expect(router.close).toHaveBeenCalledTimes(1);
+      expect(workerPool.trackRouterClosed).toHaveBeenCalledWith(worker);
+      expect(() => service.getRoom('room-1')).toThrow(NotFoundException);
+    });
+
+    it('does not close the router while peers remain', async () => {
+      stubWorkerCreatingRouter();
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      const closed = service.closeRoom('room-1');
+
+      expect(closed).toBe(false);
+      expect(router.close).not.toHaveBeenCalled();
+      expect(workerPool.trackRouterClosed).not.toHaveBeenCalled();
+      expect(service.getRoom('room-1')).toBe(room);
+    });
+
+    it('throws NotFoundException for an unknown room', () => {
+      expect(() => service.closeRoom('missing')).toThrow(NotFoundException);
     });
   });
 });

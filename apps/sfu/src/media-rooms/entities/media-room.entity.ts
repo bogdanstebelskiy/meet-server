@@ -29,6 +29,23 @@ export class MediaRoom {
     return this.peers.get(peerId);
   }
 
+  // Closing a transport cascades to every producer/consumer on it.
+  removePeer(peerId: string): void {
+    const peer = this.peers.get(peerId);
+
+    if (!peer) {
+      return;
+    }
+
+    peer.sendTransport?.close();
+    peer.recvTransport?.close();
+    this.peers.delete(peerId);
+  }
+
+  isEmpty(): boolean {
+    return this.peers.size === 0;
+  }
+
   // Closing the router cascades to every transport/producer/consumer in it.
   close(): void {
     this.router.close();

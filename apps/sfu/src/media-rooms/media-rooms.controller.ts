@@ -1,5 +1,14 @@
-import { Body, Controller, HttpCode, Param, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 import type {
+  CloseRoomResponse,
   ConnectTransportRequest,
   ConnectTransportResponse,
   ConsumeRequest,
@@ -10,6 +19,7 @@ import type {
   PauseProducerResponse,
   ProduceRequest,
   ProduceResponse,
+  RemovePeerResponse,
   ResumeConsumerResponse,
   ResumeProducerResponse,
 } from '@app/media-contracts';
@@ -140,5 +150,24 @@ export class MediaRoomsController {
     await this.mediaRoomsService.resumeProducer(roomId, peerId, producerId);
 
     return { resumed: true };
+  }
+
+  @Delete(':roomId/peers/:peerId')
+  @HttpCode(200)
+  removePeer(
+    @Param('roomId') roomId: string,
+    @Param('peerId') peerId: string,
+  ): RemovePeerResponse {
+    this.mediaRoomsService.removePeer(roomId, peerId);
+
+    return { removed: true };
+  }
+
+  @Delete(':roomId')
+  @HttpCode(200)
+  closeRoom(@Param('roomId') roomId: string): CloseRoomResponse {
+    const closed = this.mediaRoomsService.closeRoom(roomId);
+
+    return { closed };
   }
 }

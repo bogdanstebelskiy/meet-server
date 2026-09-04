@@ -72,3 +72,11 @@ export interface PauseProducerResponse {
 export interface ResumeProducerResponse {
   resumed: true;
 }
+
+export interface RemovePeerResponse {
+  removed: true;
+}
+
+export interface CloseRoomResponse {
+  closed: boolean;
+}

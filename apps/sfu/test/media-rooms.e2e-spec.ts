@@ -325,4 +325,108 @@ describe('MediaRooms (e2e)', () => {
       expect(response.body.message).toContain('has no recv transport');
     });
   });
+
+  describe('teardown', () => {
+    it('removing a peer closes its transports, and only the last peer removal allows the room to close', async () => {
+      const roomId = 'teardown-room';
+      const aliceId = 'alice';
+      const bobId = 'bob';
+
+      const room = await request(server).put(`/media-rooms/${roomId}`);
+      const aliceSendTransport = (
+        await request(server)
+          .post(`/media-rooms/${roomId}/peers/${aliceId}/transports`)
+          .send({ direction: 'send' })
+      ).body;
+      await request(server)
+        .post(
+          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/connect`,
+        )
+        .send({ dtlsParameters: fakeDtlsParameters() });
+      await request(server)
+        .post(
+          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`,
+        )
+        .send({
+          kind: 'audio',
+          rtpParameters: audioProducerRtpParameters(
+            room.body.rtpCapabilities,
+            55555555,
+          ),
+        });
+      await request(server)
+        .post(`/media-rooms/${roomId}/peers/${bobId}/transports`)
+        .send({ direction: 'recv' });
+
+      await request(server)
+        .delete(`/media-rooms/${roomId}/peers/${aliceId}`)
+        .expect(200)
+        .expect({ removed: true });
+
+      // Alice herself (and her transport with her) is gone from the room.
+      const afterRemoval = await request(server)
+        .post(
+          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`,
+        )
+        .send({
+          kind: 'audio',
+          rtpParameters: audioProducerRtpParameters(
+            room.body.rtpCapabilities,
+            66666666,
+          ),
+        })
+        .expect(404);
+      expect(afterRemoval.body.message).toContain(`Peer ${aliceId} not found`);
+
+      // Bob still remains, so the router must not be closed yet.
+      const stillOpen = await request(server)
+        .delete(`/media-rooms/${roomId}`)
+        .expect(200);
+      expect(stillOpen.body).toEqual({ closed: false });
+      await request(server)
+        .put(`/media-rooms/${roomId}`)
+        .expect(200)
+        .expect(room.body);
+
+      await request(server)
+        .delete(`/media-rooms/${roomId}/peers/${bobId}`)
+        .expect(200)
+        .expect({ removed: true });
+
+      const closed = await request(server)
+        .delete(`/media-rooms/${roomId}`)
+        .expect(200);
+      expect(closed.body).toEqual({ closed: true });
+
+      // The router is gone, so create-or-get spins up a brand new room.
+      const recreated = await request(server)
+        .put(`/media-rooms/${roomId}`)
+        .expect(200);
+      expect(recreated.body.roomId).toBe(roomId);
+    });
+
+    it('removing a peer from an unknown room returns a standard NotFoundException JSON body', async () => {
+      const response = await request(server)
+        .delete('/media-rooms/no-such-room/peers/ghost')
+        .expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        message: expect.stringContaining('no-such-room'),
+        error: 'Not Found',
+      });
+    });
+
+    it('closing an unknown room returns a standard NotFoundException JSON body', async () => {
+      const response = await request(server)
+        .delete('/media-rooms/no-such-room')
+        .expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        message: expect.stringContaining('no-such-room'),
+        error: 'Not Found',
+      });
+    });
+  });
 });
