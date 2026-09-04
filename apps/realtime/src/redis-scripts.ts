@@ -1,5 +1,3 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { Redis, Result } from 'ioredis';
 
 declare module 'ioredis' {
@@ -11,18 +9,23 @@ declare module 'ioredis' {
   }
 }
 
-// Lives at src root, not inside rooms/, so this path also resolves once
-// webpack bundles everything into one dist/apps/realtime file (nest-cli.json
-// copies .lua files there too - see its "assets" entry).
-function readScript(fileName: string): string {
-  return fs.readFileSync(path.join(__dirname, fileName), 'utf8');
-}
+// Inlined rather than read from a .lua file - the realtime project's
+// webpack builder doesn't copy non-TS assets into dist (nest-cli.json's
+// "assets" entry is a no-op under webpack), so a separate file never made
+// it to the built output.
+// KEYS[1] = peersKey, KEYS[2] = roomKey. Atomic so a concurrent addPeer
+// can't land between the emptiness check and the delete (issue #24).
+const CLOSE_ROOM_IF_EMPTY_SCRIPT = `
+if redis.call('HLEN', KEYS[1]) == 0 then
+  redis.call('DEL', KEYS[1], KEYS[2])
+  return 1
+end
+return 0
+`;
 
-// Add new scripts here: one .lua file (matched by nest-cli.json's "*.lua"
-// asset glob, no config change needed) plus one defineCommand call below.
 export function registerRedisScripts(redis: Redis): void {
   redis.defineCommand('closeRoomIfEmpty', {
-    lua: readScript('close-room-if-empty.lua'),
+    lua: CLOSE_ROOM_IF_EMPTY_SCRIPT,
     numberOfKeys: 2,
   });
 }

@@ -25,13 +25,7 @@
       "entryFile": "main",
       "sourceRoot": "apps/realtime/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/realtime/tsconfig.app.json",
-        "assets": [
-          {
-            "include": "*.lua",
-            "watchAssets": true
-          }
-        ]
+        "tsConfigPath": "apps/realtime/tsconfig.app.json"
       }
     },
     "sfu": {
