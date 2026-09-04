@@ -9,12 +9,14 @@ describe('SfuClientService', () => {
   let httpService: {
     put: jest.Mock;
     post: jest.Mock;
+    delete: jest.Mock;
   };
 
   beforeEach(() => {
     httpService = {
       put: jest.fn(),
       post: jest.fn(),
+      delete: jest.fn(),
     };
 
     service = new SfuClientService(httpService as unknown as HttpService);
@@ -152,6 +154,32 @@ describe('SfuClientService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         '/media-rooms/room-1/peers/peer-1/producers/prod-1/resume',
       );
+      expect(result).toBe(response);
+    });
+  });
+
+  describe('removePeer', () => {
+    it('DELETEs the peer route and returns the response body', async () => {
+      const response = { removed: true };
+      httpService.delete.mockReturnValue(of({ data: response }));
+
+      const result = await service.removePeer('room-1', 'peer-1');
+
+      expect(httpService.delete).toHaveBeenCalledWith(
+        '/media-rooms/room-1/peers/peer-1',
+      );
+      expect(result).toBe(response);
+    });
+  });
+
+  describe('closeRoom', () => {
+    it('DELETEs the room route and returns the response body', async () => {
+      const response = { closed: true };
+      httpService.delete.mockReturnValue(of({ data: response }));
+
+      const result = await service.closeRoom('room-1');
+
+      expect(httpService.delete).toHaveBeenCalledWith('/media-rooms/room-1');
       expect(result).toBe(response);
     });
   });

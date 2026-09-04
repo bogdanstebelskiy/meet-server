@@ -3,12 +3,14 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { isAxiosError, type AxiosResponse } from 'axios';
 import type {
+  CloseRoomResponse,
   ConnectTransportResponse,
   ConsumeResponse,
   CreateTransportResponse,
   MediaRoomResponse,
   PauseProducerResponse,
   ProduceResponse,
+  RemovePeerResponse,
   ResumeConsumerResponse,
   ResumeProducerResponse,
   TransportDirection,
@@ -124,6 +126,20 @@ export class SfuClientService {
       this.httpService.post<ResumeProducerResponse>(
         `/media-rooms/${roomId}/peers/${peerId}/producers/${producerId}/resume`,
       ),
+    );
+  }
+
+  removePeer(roomId: string, peerId: string): Promise<RemovePeerResponse> {
+    return this.request(() =>
+      this.httpService.delete<RemovePeerResponse>(
+        `/media-rooms/${roomId}/peers/${peerId}`,
+      ),
+    );
+  }
+
+  closeRoom(roomId: string): Promise<CloseRoomResponse> {
+    return this.request(() =>
+      this.httpService.delete<CloseRoomResponse>(`/media-rooms/${roomId}`),
     );
   }
 
