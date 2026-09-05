@@ -7,7 +7,7 @@ import type {
 } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
-import { Peer } from '../rooms/entities/peer.entity';
+import { Peer } from '../rooms/types';
 import { ChatService } from '../chat/chat.service';
 import type { TransportDirection } from './types';
 

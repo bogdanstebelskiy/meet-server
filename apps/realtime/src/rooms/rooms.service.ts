@@ -4,9 +4,7 @@ import type { MediaKind } from 'mediasoup/types';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { ROOM_TTL_SECONDS } from './constants';
-import { Room } from './entities/room.entity';
-import { Peer } from './entities/peer.entity';
-import { RoomProducer } from './entities/room-producer.entity';
+import { Room, Peer, RoomProducer } from './types';
 
 @Injectable()
 export class RoomsService {

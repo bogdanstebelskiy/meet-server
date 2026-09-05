@@ -40,7 +40,7 @@ if (raw) {
 }
 ```
 
-A `*.service.ts` file holds only business logic — never a `type`/`interface` declaration, no matter how small or local-feeling. Split any type out into its own file, placed wherever fits the type's role (a domain shape goes in `entities/` next to `Room`/`Peer`, a cross-cutting helper type goes in that module's `types.ts`, a wire-format type goes in `payloads/` — judge it per situation rather than defaulting to one bucket), then import it into the service.
+A `*.service.ts` file holds only business logic — never a `type`/`interface` declaration, no matter how small or local-feeling. Split any type out into its own file, placed wherever fits the type's role (a module's own domain shapes and cross-cutting helper types both go in that module's `types/index.ts`, a wire-format type goes in `payloads/` — judge it per situation rather than defaulting to one bucket), then import it into the service.
 
 ```ts
 // avoid — inside rooms.service.ts
@@ -49,7 +49,7 @@ export interface RoomProducer {
   kind: MediaKind;
 }
 
-// prefer — apps/realtime/src/rooms/entities/room-producer.entity.ts
+// prefer — apps/realtime/src/rooms/types/index.ts
 import type { MediaKind } from 'mediasoup/types';
 
 export interface RoomProducer {
@@ -58,13 +58,13 @@ export interface RoomProducer {
 }
 ```
 
-Same for constants: a `*.service.ts` file doesn't declare its own module-level constants either — move them into their own file (e.g. a `constants.ts` in that module) and import them.
+Same for constants: a `*.service.ts` file doesn't declare its own module-level constants either — move them into their own file (e.g. a `constants/index.ts` in that module) and import them.
 
 ```ts
 // avoid — inside rooms.service.ts
 const ROOM_TTL_SECONDS = 60 * 60 * 24;
 
-// prefer — apps/realtime/src/rooms/constants.ts
+// prefer — apps/realtime/src/rooms/constants/index.ts
 export const ROOM_TTL_SECONDS = 60 * 60 * 24;
 ```
 
