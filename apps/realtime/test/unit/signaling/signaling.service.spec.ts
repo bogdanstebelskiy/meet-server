@@ -20,6 +20,7 @@ describe('SignalingService', () => {
     closeRoom: jest.Mock;
     addProducer: jest.Mock;
     getProducers: jest.Mock;
+    touchPeerLiveness: jest.Mock;
   };
   let sfuClient: {
     createTransport: jest.Mock;
@@ -55,6 +56,7 @@ describe('SignalingService', () => {
       closeRoom: jest.fn().mockResolvedValue(true),
       addProducer: jest.fn().mockResolvedValue(undefined),
       getProducers: jest.fn().mockResolvedValue([]),
+      touchPeerLiveness: jest.fn().mockResolvedValue(undefined),
     };
 
     sfuClient = {
@@ -259,9 +261,18 @@ describe('SignalingService', () => {
 
   describe('sessionHeartbeat', () => {
     it('touches the session for the room', async () => {
-      await service.sessionHeartbeat('room-1');
+      await service.sessionHeartbeat('room-1', 'peer-1');
 
       expect(sessionsService.touch).toHaveBeenCalledWith('room-1');
+    });
+
+    it('touches the calling peer liveness too', async () => {
+      await service.sessionHeartbeat('room-1', 'peer-1');
+
+      expect(roomsService.touchPeerLiveness).toHaveBeenCalledWith(
+        'room-1',
+        'peer-1',
+      );
     });
   });
 

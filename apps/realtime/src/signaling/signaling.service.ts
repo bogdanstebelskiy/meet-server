@@ -192,8 +192,9 @@ export class SignalingService {
     );
   }
 
-  async sessionHeartbeat(roomId: string): Promise<void> {
+  async sessionHeartbeat(roomId: string, peerId: string): Promise<void> {
     await this.sessionsService.touch(roomId);
+    await this.roomsService.touchPeerLiveness(roomId, peerId);
   }
 
   async leave(roomId: string, peerId: string): Promise<void> {
