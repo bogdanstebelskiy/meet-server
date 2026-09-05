@@ -259,6 +259,19 @@ export class MediaRoomsService {
     return true;
   }
 
+  // Proportional to actual forwarding work, unlike room or worker count.
+  getTotalConsumerCount(): number {
+    let total = 0;
+
+    for (const room of this.rooms.values()) {
+      for (const peer of room.peers.values()) {
+        total += peer.consumers.size;
+      }
+    }
+
+    return total;
+  }
+
   private findProducer(roomId: string, peerId: string, producerId: string) {
     const peer = this.getPeer(roomId, peerId);
     const producer = peer.producers.get(producerId);

@@ -9,5 +9,6 @@ import { MediaRoomsController } from './media-rooms.controller';
   imports: [WorkersModule],
   controllers: [MediaRoomsController],
   providers: [MediaRoomsService, WebRtcConfigService, MediaCodecsConfigService],
+  exports: [MediaRoomsService],
 })
 export class MediaRoomsModule {}

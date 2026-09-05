@@ -484,4 +484,25 @@ describe('MediaRoomsService', () => {
       expect(service.closeRoom('missing')).toBe(true);
     });
   });
+
+  describe('getTotalConsumerCount', () => {
+    it('returns 0 when no rooms exist', () => {
+      expect(service.getTotalConsumerCount()).toBe(0);
+    });
+
+    it('sums consumers across every peer in every room, not just one', async () => {
+      stubWorkerCreatingRouter();
+      const room1 = await service.getOrCreateRoom('room-1');
+      const room2 = await service.getOrCreateRoom('room-2');
+      const peer1 = room1.getOrCreatePeer('peer-1');
+      const peer2 = room1.getOrCreatePeer('peer-2');
+      const peer3 = room2.getOrCreatePeer('peer-3');
+      peer1.consumers.set('c1', {} as any);
+      peer1.consumers.set('c2', {} as any);
+      peer2.consumers.set('c3', {} as any);
+      peer3.consumers.set('c4', {} as any);
+
+      expect(service.getTotalConsumerCount()).toBe(4);
+    });
+  });
 });
