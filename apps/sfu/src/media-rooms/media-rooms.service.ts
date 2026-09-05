@@ -41,12 +41,14 @@ export class MediaRoomsService {
       return pending;
     }
 
-    const creation = this.createRoom(roomId).finally(() =>
-      this.pendingRooms.delete(roomId),
-    );
+    const creation = this.createRoom(roomId);
     this.pendingRooms.set(roomId, creation);
 
-    return creation;
+    try {
+      return await creation;
+    } finally {
+      this.pendingRooms.delete(roomId);
+    }
   }
 
   private async createRoom(roomId: string): Promise<MediaRoom> {
