@@ -11,7 +11,7 @@ import { TRANSPORT_DIRECTIONS } from '@app/media-contracts';
 import type { TransportDirection } from '@app/media-contracts';
 import { WorkerPoolService } from '../workers/worker-pool.service';
 import { WebRtcConfigService } from '../config/webrtc-config.service';
-import { mediaCodecs } from '../config';
+import { MediaCodecsConfigService } from '../config/media-codecs-config.service';
 import { MediaRoom } from './entities/media-room.entity';
 import { MediaPeer } from './entities/media-peer.entity';
 
@@ -26,6 +26,7 @@ export class MediaRoomsService {
   constructor(
     private readonly workerPool: WorkerPoolService,
     private readonly webRtcConfig: WebRtcConfigService,
+    private readonly mediaCodecsConfig: MediaCodecsConfigService,
   ) {}
 
   async getOrCreateRoom(roomId: string): Promise<MediaRoom> {
@@ -63,6 +64,7 @@ export class MediaRoomsService {
 
   private async createRouterOrReleaseWorker(worker: Worker) {
     try {
+      const mediaCodecs = this.mediaCodecsConfig.codecs;
       return await worker.createRouter({ mediaCodecs });
     } catch (error) {
       // createRouter never resolved - give back the slot reserveWorker took.

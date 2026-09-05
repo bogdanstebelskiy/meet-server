@@ -7,7 +7,7 @@ import {
 import * as os from 'node:os';
 import { createWorker } from 'mediasoup';
 import type { Worker } from 'mediasoup/types';
-import { workerSettings } from '../config';
+import { WorkerSettingsConfigService } from '../config/worker-settings-config.service';
 
 @Injectable()
 export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
@@ -15,10 +15,15 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   private workers: Worker[] = [];
   private routersPerWorker = new Map<Worker, number>();
 
+  constructor(
+    private readonly workerSettingsConfig: WorkerSettingsConfigService,
+  ) {}
+
   async onModuleInit() {
     const numWorkers = os.cpus().length;
 
     for (let idx = 0; idx < numWorkers; ++idx) {
+      const workerSettings = this.workerSettingsConfig.settings;
       const worker = await createWorker(workerSettings);
 
       worker.on('died', () => {

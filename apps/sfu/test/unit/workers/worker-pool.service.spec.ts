@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as os from 'node:os';
 import { createWorker } from 'mediasoup';
 import { WorkerPoolService } from '../../../src/workers/worker-pool.service';
+import { WorkerSettingsConfigService } from '../../../src/config/worker-settings-config.service';
 
 jest.mock('node:os');
 jest.mock('mediasoup');
@@ -24,7 +25,7 @@ describe('WorkerPoolService', () => {
     );
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [WorkerPoolService],
+      providers: [WorkerPoolService, WorkerSettingsConfigService],
     }).compile();
 
     service = module.get<WorkerPoolService>(WorkerPoolService);

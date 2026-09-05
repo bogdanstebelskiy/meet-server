@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { MediaRoomsService } from '../../../src/media-rooms/media-rooms.service';
 import { WorkerPoolService } from '../../../src/workers/worker-pool.service';
 import { WebRtcConfigService } from '../../../src/config/webrtc-config.service';
+import { MediaCodecsConfigService } from '../../../src/config/media-codecs-config.service';
 
 describe('MediaRoomsService', () => {
   let service: MediaRoomsService;
@@ -14,6 +15,7 @@ describe('MediaRoomsService', () => {
     portRange: unknown;
     webRtcTransportOptions: unknown;
   };
+  let mediaCodecsConfig: { codecs: unknown };
   let router: {
     rtpCapabilities: unknown;
     createWebRtcTransport: jest.Mock;
@@ -50,9 +52,14 @@ describe('MediaRoomsService', () => {
       },
     };
 
+    mediaCodecsConfig = {
+      codecs: [{ kind: 'audio', mimeType: 'audio/opus', clockRate: 48000 }],
+    };
+
     service = new MediaRoomsService(
       workerPool as unknown as WorkerPoolService,
       webRtcConfig as unknown as WebRtcConfigService,
+      mediaCodecsConfig as unknown as MediaCodecsConfigService,
     );
   });
 
