@@ -1,0 +1,4 @@
+export const INSTANCE_KEY_PREFIX = 'sfu:instance:';
+
+export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
+export const DEFAULT_INSTANCE_REGISTRY_TTL_SECONDS = 15;
