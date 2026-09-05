@@ -17,8 +17,12 @@ One participant's presence in a **Room** — id, display name, and (from the rea
 _Avoid_: Participant, User, Client
 
 **Session** (see issue #7):
-The mapping of a **Room**'s id to the specific `sfu` instance holding that room's **MediaRoom**/`Router` — sticky routing, not peer liveness. TTL-refreshed by participant activity (coalesced updates), assigned once when a room's session is first created. Distinct from a **Peer**'s presence in a **Room**, which issue #6 makes independent of any single `realtime` instance.
-_Avoid_: using "session" to mean a peer's connection/liveness — that concept still has no name (see issue #31), tracked separately from Session
+The mapping of a **Room**'s id to the specific `sfu` instance holding that room's **MediaRoom**/`Router` — sticky routing, not peer liveness. TTL-refreshed by participant activity (coalesced updates), assigned once when a room's session is first created. Distinct from a **Peer**'s **Liveness** (issue #31) and from a **Peer**'s own presence data, which issue #6 makes independent of any single `realtime` instance.
+_Avoid_: using "session" to mean a peer's connection/liveness — see **Liveness** instead
+
+**Liveness** (see issue #31):
+A **Peer**'s own per-peer TTL, separate from the room-wide peers-hash TTL that keeps its membership record alive. Refreshed by the same participant-heartbeat event that touches a **Session** (`sessionHeartbeat`), but tracked independently — a crashed `realtime` instance ages out only the peers it was serving, not the whole room's **Session**. A **Peer** whose Liveness has expired stops being reported as present (`getOtherPeers`, join backfill) even though its hash field can still be there, orphaned until the room's own TTL eventually clears it.
+_Avoid_: Session (reserved for the room→instance mapping), Heartbeat (that's the wire event that refreshes Liveness, not Liveness itself)
 
 **Instance Record** (see issue #8):
 An `sfu` instance's self-published entry in Redis — its advertised URL and current load (active consumer count), heartbeat-refreshed with a TTL so a crashed instance's record simply expires. Exists independently of any **Room**; a **Session** is chosen *from* the set of live Instance Records at assignment time, but an Instance Record itself knows nothing about which rooms it holds.
@@ -37,4 +41,4 @@ _Avoid_: Session (reserved for the room→instance mapping), "registry entry" (s
 ## Flagged ambiguities
 
 - "Room" was used for both the membership concept and the mediasoup-object-holding concept before the `sfu`/`realtime` split (issue #5) — resolved: **Room** (realtime, membership) and **MediaRoom** (sfu, mediasoup objects) are distinct.
-- **MediaRoom**'s avoid-list previously claimed "Session" was reserved for peer connection/liveness, while **Session**'s own entry defined it as sfu-instance sticky routing and explicitly said liveness "doesn't have a name yet" — a stale contradiction from before Session was pinned down. Resolved while grilling issue #7: **Session** is sticky routing only; peer-liveness (a crashed `realtime` instance leaving a stale peer behind, independent of the room's own health) is separate, unnamed work now tracked as issue #31.
+- **MediaRoom**'s avoid-list previously claimed "Session" was reserved for peer connection/liveness, while **Session**'s own entry defined it as sfu-instance sticky routing and explicitly said liveness "doesn't have a name yet" — a stale contradiction from before Session was pinned down. Resolved while grilling issue #7: **Session** is sticky routing only; peer-liveness (a crashed `realtime` instance leaving a stale peer behind, independent of the room's own health) is separate work, now named **Liveness** and built as issue #31.
