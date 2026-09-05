@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { TransportPortRange } from 'mediasoup/types';
+import type {
+  TransportPortRange,
+  WebRtcTransportOptions,
+} from 'mediasoup/types';
 
 @Injectable()
 export class WebRtcConfigService {
@@ -32,6 +35,33 @@ export class WebRtcConfigService {
     return {
       min: Number(this.configService.get('WEBRTC_PORT_RANGE_MIN', '40000')),
       max: Number(this.configService.get('WEBRTC_PORT_RANGE_MAX', '49999')),
+    };
+  }
+
+  // Every WebRtcTransport this app creates listens the same way - udp+tcp
+  // pair on the same announced address/port range, udp preferred.
+  get webRtcTransportOptions(): WebRtcTransportOptions {
+    const announcedAddress = this.announcedAddress;
+    const portRange = this.portRange;
+
+    return {
+      listenInfos: [
+        {
+          protocol: 'udp',
+          ip: '0.0.0.0',
+          announcedAddress,
+          portRange,
+        },
+        {
+          protocol: 'tcp',
+          ip: '0.0.0.0',
+          announcedAddress,
+          portRange,
+        },
+      ],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
     };
   }
 }

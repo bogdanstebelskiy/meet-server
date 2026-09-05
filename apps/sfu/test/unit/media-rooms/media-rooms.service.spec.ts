@@ -9,7 +9,11 @@ describe('MediaRoomsService', () => {
     reserveWorker: jest.Mock;
     trackRouterClosed: jest.Mock;
   };
-  let webRtcConfig: { announcedAddress: string; portRange: unknown };
+  let webRtcConfig: {
+    announcedAddress: string;
+    portRange: unknown;
+    webRtcTransportOptions: unknown;
+  };
   let router: {
     rtpCapabilities: unknown;
     createWebRtcTransport: jest.Mock;
@@ -35,6 +39,15 @@ describe('MediaRoomsService', () => {
     webRtcConfig = {
       announcedAddress: '127.0.0.1',
       portRange: { min: 40000, max: 49999 },
+      webRtcTransportOptions: {
+        listenInfos: [
+          { protocol: 'udp', ip: '0.0.0.0', announcedAddress: '127.0.0.1' },
+          { protocol: 'tcp', ip: '0.0.0.0', announcedAddress: '127.0.0.1' },
+        ],
+        enableUdp: true,
+        enableTcp: true,
+        preferUdp: true,
+      },
     };
 
     service = new MediaRoomsService(

@@ -103,25 +103,8 @@ export class MediaRoomsService {
     let transport: WebRtcTransport;
 
     try {
-      transport = await room.router.createWebRtcTransport({
-        listenInfos: [
-          {
-            protocol: 'udp',
-            ip: '0.0.0.0',
-            announcedAddress: this.webRtcConfig.announcedAddress,
-            portRange: this.webRtcConfig.portRange,
-          },
-          {
-            protocol: 'tcp',
-            ip: '0.0.0.0',
-            announcedAddress: this.webRtcConfig.announcedAddress,
-            portRange: this.webRtcConfig.portRange,
-          },
-        ],
-        enableUdp: true,
-        enableTcp: true,
-        preferUdp: true,
-      });
+      const transportOptions = this.webRtcConfig.webRtcTransportOptions;
+      transport = await room.router.createWebRtcTransport(transportOptions);
     } catch (error) {
       // A brand-new peer with nothing else on it yet must not linger forever
       // and block the room from ever being seen as empty.
