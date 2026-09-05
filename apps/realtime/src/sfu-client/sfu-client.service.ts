@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { isAxiosError, type AxiosResponse } from 'axios';
@@ -22,21 +22,33 @@ import type {
   RtpCapabilities,
   RtpParameters,
 } from 'mediasoup/types';
+import { SessionsService } from '../sessions/sessions.service';
 import type { HttpExceptionBody } from './types';
 
 @Injectable()
 export class SfuClientService {
-  constructor(private readonly httpService: HttpService) {}
+  private readonly logger = new Logger(SfuClientService.name);
 
-  createOrGetMediaRoom(roomId: string): Promise<MediaRoomResponse> {
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly sessionsService: SessionsService,
+  ) {}
+
+  createOrGetMediaRoom(
+    instanceUrl: string,
+    roomId: string,
+  ): Promise<MediaRoomResponse> {
     const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.createOrGetRoom, {
       roomId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.put<MediaRoomResponse>(url);
 
-    return this.request(() => this.httpService.put<MediaRoomResponse>(path));
+    return this.request(roomId, call);
   }
 
   createTransport(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     direction: TransportDirection,
@@ -45,13 +57,15 @@ export class SfuClientService {
       roomId,
       peerId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () =>
+      this.httpService.post<CreateTransportResponse>(url, { direction });
 
-    return this.request(() =>
-      this.httpService.post<CreateTransportResponse>(path, { direction }),
-    );
+    return this.request(roomId, call);
   }
 
   connectTransport(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     transportId: string,
@@ -62,15 +76,17 @@ export class SfuClientService {
       peerId,
       transportId,
     });
-
-    return this.request(() =>
-      this.httpService.post<ConnectTransportResponse>(path, {
+    const url = `${instanceUrl}${path}`;
+    const call = () =>
+      this.httpService.post<ConnectTransportResponse>(url, {
         dtlsParameters,
-      }),
-    );
+      });
+
+    return this.request(roomId, call);
   }
 
   produce(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     transportId: string,
@@ -82,13 +98,15 @@ export class SfuClientService {
       peerId,
       transportId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () =>
+      this.httpService.post<ProduceResponse>(url, { kind, rtpParameters });
 
-    return this.request(() =>
-      this.httpService.post<ProduceResponse>(path, { kind, rtpParameters }),
-    );
+    return this.request(roomId, call);
   }
 
   consume(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
@@ -98,16 +116,18 @@ export class SfuClientService {
       roomId,
       peerId,
     });
-
-    return this.request(() =>
-      this.httpService.post<ConsumeResponse>(path, {
+    const url = `${instanceUrl}${path}`;
+    const call = () =>
+      this.httpService.post<ConsumeResponse>(url, {
         producerId,
         rtpCapabilities,
-      }),
-    );
+      });
+
+    return this.request(roomId, call);
   }
 
   resumeConsumer(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     consumerId: string,
@@ -117,13 +137,14 @@ export class SfuClientService {
       peerId,
       consumerId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.post<ResumeConsumerResponse>(url);
 
-    return this.request(() =>
-      this.httpService.post<ResumeConsumerResponse>(path),
-    );
+    return this.request(roomId, call);
   }
 
   pauseProducer(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
@@ -133,13 +154,14 @@ export class SfuClientService {
       peerId,
       producerId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.post<PauseProducerResponse>(url);
 
-    return this.request(() =>
-      this.httpService.post<PauseProducerResponse>(path),
-    );
+    return this.request(roomId, call);
   }
 
   resumeProducer(
+    instanceUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
@@ -149,27 +171,33 @@ export class SfuClientService {
       peerId,
       producerId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.post<ResumeProducerResponse>(url);
 
-    return this.request(() =>
-      this.httpService.post<ResumeProducerResponse>(path),
-    );
+    return this.request(roomId, call);
   }
 
-  removePeer(roomId: string, peerId: string): Promise<RemovePeerResponse> {
+  removePeer(
+    instanceUrl: string,
+    roomId: string,
+    peerId: string,
+  ): Promise<RemovePeerResponse> {
     const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.removePeer, {
       roomId,
       peerId,
     });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.delete<RemovePeerResponse>(url);
 
-    return this.request(() =>
-      this.httpService.delete<RemovePeerResponse>(path),
-    );
+    return this.request(roomId, call);
   }
 
-  closeRoom(roomId: string): Promise<CloseRoomResponse> {
+  closeRoom(instanceUrl: string, roomId: string): Promise<CloseRoomResponse> {
     const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.closeRoom, { roomId });
+    const url = `${instanceUrl}${path}`;
+    const call = () => this.httpService.delete<CloseRoomResponse>(url);
 
-    return this.request(() => this.httpService.delete<CloseRoomResponse>(path));
+    return this.request(roomId, call);
   }
 
   // Reconstructs a real HttpException from apps/sfu's default Nest error
@@ -179,6 +207,7 @@ export class SfuClientService {
   // so it's reported as 503 rather than left to escape as a raw AxiosError,
   // which WsExceptionFilter would otherwise mask as an opaque 500.
   private async request<T>(
+    roomId: string,
     call: () => Observable<AxiosResponse<T>>,
   ): Promise<T> {
     try {
@@ -192,6 +221,19 @@ export class SfuClientService {
       }
 
       if (!error.response) {
+        // Couldn't reach the instance (refused, timed out, DNS) - maybe just
+        // a blip, not necessarily dead, but invalidating is cheap and beats
+        // staying pinned here for the rest of the TTL either way.
+        // Best-effort: a Redis hiccup here must not mask the 503 below.
+        try {
+          await this.sessionsService.invalidate(roomId);
+        } catch (invalidateError) {
+          this.logger.error(
+            `Failed to invalidate session for room ${roomId}`,
+            invalidateError,
+          );
+        }
+
         throw new HttpException(
           `apps/sfu is unreachable: ${error.message}`,
           HttpStatus.SERVICE_UNAVAILABLE,

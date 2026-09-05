@@ -1,18 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RoomsService } from '../../../src/rooms/rooms.service';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
+import { SessionsService } from '../../../src/sessions/sessions.service';
 import { REDIS_CLIENT } from '../../../src/redis/redis.provider';
 import { FakeRedis } from '../fakes/fake-redis';
+
+const instanceUrl = 'http://sfu-instance:3001';
 
 describe('RoomsService', () => {
   let service: RoomsService;
   let redis: FakeRedis;
   let sfuClient: { createOrGetMediaRoom: jest.Mock };
+  let sessionsService: { assign: jest.Mock };
 
   beforeEach(async () => {
     redis = new FakeRedis();
     sfuClient = {
       createOrGetMediaRoom: jest.fn(),
+    };
+    sessionsService = {
+      assign: jest.fn().mockResolvedValue(instanceUrl),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -20,6 +27,7 @@ describe('RoomsService', () => {
         RoomsService,
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: SfuClientService, useValue: sfuClient },
+        { provide: SessionsService, useValue: sessionsService },
       ],
     }).compile();
 
@@ -36,9 +44,23 @@ describe('RoomsService', () => {
 
       const room = await service.getOrCreateRoom('room-1');
 
-      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith(
+        instanceUrl,
+        'room-1',
+      );
       expect(room).toEqual({ id: 'room-1', rtpCapabilities });
       expect(await redis.get('room:room-1')).toBe(JSON.stringify(room));
+    });
+
+    it('assigns a session before creating the room via the SfuClient', async () => {
+      sfuClient.createOrGetMediaRoom.mockResolvedValue({
+        roomId: 'room-1',
+        rtpCapabilities: {},
+      });
+
+      await service.getOrCreateRoom('room-1');
+
+      expect(sessionsService.assign).toHaveBeenCalledWith('room-1');
     });
 
     it('sets a TTL on the room key', async () => {

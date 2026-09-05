@@ -65,6 +65,7 @@ describe('Signaling (e2e)', () => {
   let sfuApp: INestApplication;
   let app: INestApplication;
   let baseUrl: string;
+  let sfuServiceUrl: string;
   const clients: ClientSocket[] = [];
 
   beforeAll(async () => {
@@ -73,7 +74,7 @@ describe('Signaling (e2e)', () => {
     }).compile();
 
     sfuApp = sfuModuleFixture.createNestApplication();
-    const sfuServiceUrl = await listenOnEphemeralPort(sfuApp);
+    sfuServiceUrl = await listenOnEphemeralPort(sfuApp);
 
     // Read by apps/realtime's SfuClientModule (HttpModule.registerAsync)
     // when AppModule below is compiled - must be set first.
@@ -562,6 +563,49 @@ describe('Signaling (e2e)', () => {
       expect(() => mediaRoomsService.getPeer(roomId, alicePeerId)).toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('sessions', () => {
+    it('pins a room to the configured sfu instance in Redis on first join, no other instances registered', async () => {
+      const roomId = 'session-pin-room';
+      const alice = await connectClient();
+
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      expect(await redis.get(`session:${roomId}`)).toBe(sfuServiceUrl);
+    });
+
+    it('sessionHeartbeat acks and refreshes the session TTL', async () => {
+      const roomId = 'heartbeat-room';
+      const alice = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+
+      const ack = await emitAsync(alice, 'sessionHeartbeat');
+
+      expect(ack).toEqual({ ok: true });
+
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      const ttl = await redis.ttl(`session:${roomId}`);
+      expect(ttl).toBeGreaterThan(0);
+    });
+
+    it('sessionHeartbeat before joining never acks, only surfaces via the exception event', async () => {
+      const client = await connectClient();
+
+      const { ack, exception } = await observeOutcome(
+        client,
+        'sessionHeartbeat',
+        undefined,
+      );
+
+      expect(ack).toBe('ACK_NOT_CALLED');
+      expect(exception).toMatchObject({
+        status: 'error',
+        message: 'Socket has not joined a room yet',
+        cause: { pattern: 'sessionHeartbeat' },
+      });
     });
   });
 

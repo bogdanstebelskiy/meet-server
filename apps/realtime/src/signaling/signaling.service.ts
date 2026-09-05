@@ -7,6 +7,7 @@ import type {
 } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
+import { SessionsService } from '../sessions/sessions.service';
 import { Peer } from '../rooms/types';
 import { ChatService } from '../chat/chat.service';
 import type { TransportDirection } from './types';
@@ -19,6 +20,7 @@ export class SignalingService {
     private readonly roomsService: RoomsService,
     private readonly sfuClient: SfuClientService,
     private readonly chatService: ChatService,
+    private readonly sessionsService: SessionsService,
   ) {}
 
   async join(roomId: string, peerId: string, displayName: string) {
@@ -90,8 +92,14 @@ export class SignalingService {
     direction: TransportDirection,
   ) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
-    return this.sfuClient.createTransport(roomId, peerId, direction);
+    return this.sfuClient.createTransport(
+      instanceUrl,
+      roomId,
+      peerId,
+      direction,
+    );
   }
 
   async connectWebRtcTransport(
@@ -101,8 +109,10 @@ export class SignalingService {
     dtlsParameters: DtlsParameters,
   ) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
     await this.sfuClient.connectTransport(
+      instanceUrl,
       roomId,
       peerId,
       transportId,
@@ -118,8 +128,10 @@ export class SignalingService {
     rtpParameters: RtpParameters,
   ) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
     const { id } = await this.sfuClient.produce(
+      instanceUrl,
       roomId,
       peerId,
       transportId,
@@ -138,26 +150,50 @@ export class SignalingService {
     rtpCapabilities: RtpCapabilities,
   ) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
-    return this.sfuClient.consume(roomId, peerId, producerId, rtpCapabilities);
+    return this.sfuClient.consume(
+      instanceUrl,
+      roomId,
+      peerId,
+      producerId,
+      rtpCapabilities,
+    );
   }
 
   async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
-    await this.sfuClient.resumeConsumer(roomId, peerId, consumerId);
+    await this.sfuClient.resumeConsumer(
+      instanceUrl,
+      roomId,
+      peerId,
+      consumerId,
+    );
   }
 
   async pauseProducer(roomId: string, peerId: string, producerId: string) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
-    await this.sfuClient.pauseProducer(roomId, peerId, producerId);
+    await this.sfuClient.pauseProducer(instanceUrl, roomId, peerId, producerId);
   }
 
   async resumeProducer(roomId: string, peerId: string, producerId: string) {
     await this.getPeer(roomId, peerId);
+    const instanceUrl = await this.resolveInstanceUrl(roomId);
 
-    await this.sfuClient.resumeProducer(roomId, peerId, producerId);
+    await this.sfuClient.resumeProducer(
+      instanceUrl,
+      roomId,
+      peerId,
+      producerId,
+    );
+  }
+
+  async sessionHeartbeat(roomId: string): Promise<void> {
+    await this.sessionsService.touch(roomId);
   }
 
   async leave(roomId: string, peerId: string): Promise<void> {
@@ -169,17 +205,23 @@ export class SignalingService {
 
     await this.roomsService.removePeer(roomId, peerId);
 
-    try {
-      // Must be awaited, not fire-and-forget - closeRoom below checks
-      // room.isEmpty() in apps/sfu too, and a still-in-flight removal would
-      // make it see this peer as still present and no-op forever, since
-      // nothing ever retries closeRoom once the Redis room key is gone.
-      await this.sfuClient.removePeer(roomId, peerId);
-    } catch (error) {
-      this.logger.error(
-        `Failed to remove peer ${peerId} from sfu room ${roomId}`,
-        error,
-      );
+    // A missing session here just means nothing to tear down remotely -
+    // either it was never assigned, or a prior 503 already invalidated it.
+    const instanceUrl = await this.sessionsService.get(roomId);
+
+    if (instanceUrl) {
+      try {
+        // Must be awaited, not fire-and-forget - closeRoom below checks
+        // room.isEmpty() in apps/sfu too, and a still-in-flight removal would
+        // make it see this peer as still present and no-op forever, since
+        // nothing ever retries closeRoom once the Redis room key is gone.
+        await this.sfuClient.removePeer(instanceUrl, roomId, peerId);
+      } catch (error) {
+        this.logger.error(
+          `Failed to remove peer ${peerId} from sfu room ${roomId}`,
+          error,
+        );
+      }
     }
 
     const isRoomEmpty = await this.roomsService.isEmpty(roomId);
@@ -198,11 +240,18 @@ export class SignalingService {
       return;
     }
 
-    this.sfuClient
-      .closeRoom(roomId)
-      .catch((error) =>
-        this.logger.error(`Failed to close sfu room ${roomId}`, error),
-      );
+    if (instanceUrl) {
+      this.sfuClient
+        .closeRoom(instanceUrl, roomId)
+        .catch((error) =>
+          this.logger.error(`Failed to close sfu room ${roomId}`, error),
+        );
+    }
+
+    // The room is gone - drop its session mapping now instead of waiting out
+    // its TTL, and forget the touch() debounce timer with it.
+    await this.sessionsService.invalidate(roomId);
+
     this.chatService
       .deleteRoomHistory(roomId)
       .catch((error) =>
@@ -211,5 +260,17 @@ export class SignalingService {
           error,
         ),
       );
+  }
+
+  // A missing session (expired or invalidated) isn't fatal - re-assign now,
+  // the same recovery a fresh join would trigger.
+  private async resolveInstanceUrl(roomId: string): Promise<string> {
+    const instanceUrl = await this.sessionsService.get(roomId);
+
+    if (instanceUrl) {
+      return instanceUrl;
+    }
+
+    return this.sessionsService.assign(roomId);
   }
 }

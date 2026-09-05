@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { AxiosError } from 'axios';
 import { of, throwError } from 'rxjs';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
+import { SessionsService } from '../../../src/sessions/sessions.service';
 
 describe('SfuClientService', () => {
   let service: SfuClientService;
@@ -11,6 +12,10 @@ describe('SfuClientService', () => {
     post: jest.Mock;
     delete: jest.Mock;
   };
+  let sessionsService: {
+    invalidate: jest.Mock;
+  };
+  const instanceUrl = 'http://sfu-1:3001';
 
   beforeEach(() => {
     httpService = {
@@ -18,8 +23,14 @@ describe('SfuClientService', () => {
       post: jest.fn(),
       delete: jest.fn(),
     };
+    sessionsService = {
+      invalidate: jest.fn().mockResolvedValue(undefined),
+    };
 
-    service = new SfuClientService(httpService as unknown as HttpService);
+    service = new SfuClientService(
+      httpService as unknown as HttpService,
+      sessionsService as unknown as SessionsService,
+    );
   });
 
   function axiosErrorWithResponse(status: number, body: unknown) {
@@ -33,13 +44,15 @@ describe('SfuClientService', () => {
   }
 
   describe('createOrGetMediaRoom', () => {
-    it('PUTs the roomId and returns the response body', async () => {
+    it('PUTs the resolved instance url and returns the response body', async () => {
       const mediaRoom = { roomId: 'room-1', rtpCapabilities: { codecs: [] } };
       httpService.put.mockReturnValue(of({ data: mediaRoom }));
 
-      const result = await service.createOrGetMediaRoom('room-1');
+      const result = await service.createOrGetMediaRoom(instanceUrl, 'room-1');
 
-      expect(httpService.put).toHaveBeenCalledWith('/media-rooms/room-1');
+      expect(httpService.put).toHaveBeenCalledWith(
+        'http://sfu-1:3001/media-rooms/room-1',
+      );
       expect(result).toBe(mediaRoom);
     });
   });
@@ -49,10 +62,15 @@ describe('SfuClientService', () => {
       const transport = { id: 't1' };
       httpService.post.mockReturnValue(of({ data: transport }));
 
-      const result = await service.createTransport('room-1', 'peer-1', 'send');
+      const result = await service.createTransport(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'send',
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/transports',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/transports',
         { direction: 'send' },
       );
       expect(result).toBe(transport);
@@ -64,12 +82,16 @@ describe('SfuClientService', () => {
       const response = { connected: true };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.connectTransport('room-1', 'peer-1', 't1', {
-        role: 'client',
-      } as any);
+      const result = await service.connectTransport(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        't1',
+        { role: 'client' } as any,
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/transports/t1/connect',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/transports/t1/connect',
         { dtlsParameters: { role: 'client' } },
       );
       expect(result).toBe(response);
@@ -81,12 +103,17 @@ describe('SfuClientService', () => {
       const response = { id: 'prod-1' };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.produce('room-1', 'peer-1', 't1', 'audio', {
-        codecs: [],
-      });
+      const result = await service.produce(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        't1',
+        'audio',
+        { codecs: [] },
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/transports/t1/produce',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/transports/t1/produce',
         { kind: 'audio', rtpParameters: { codecs: [] } },
       );
       expect(result).toBe(response);
@@ -104,12 +131,16 @@ describe('SfuClientService', () => {
       };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.consume('room-1', 'peer-1', 'prod-1', {
-        codecs: [],
-      });
+      const result = await service.consume(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'prod-1',
+        { codecs: [] },
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/consumers',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/consumers',
         { producerId: 'prod-1', rtpCapabilities: { codecs: [] } },
       );
       expect(result).toBe(response);
@@ -121,10 +152,15 @@ describe('SfuClientService', () => {
       const response = { resumed: true };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.resumeConsumer('room-1', 'peer-1', 'cons-1');
+      const result = await service.resumeConsumer(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'cons-1',
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/consumers/cons-1/resume',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/consumers/cons-1/resume',
       );
       expect(result).toBe(response);
     });
@@ -135,10 +171,15 @@ describe('SfuClientService', () => {
       const response = { paused: true };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.pauseProducer('room-1', 'peer-1', 'prod-1');
+      const result = await service.pauseProducer(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'prod-1',
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/producers/prod-1/pause',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/producers/prod-1/pause',
       );
       expect(result).toBe(response);
     });
@@ -149,10 +190,15 @@ describe('SfuClientService', () => {
       const response = { resumed: true };
       httpService.post.mockReturnValue(of({ data: response }));
 
-      const result = await service.resumeProducer('room-1', 'peer-1', 'prod-1');
+      const result = await service.resumeProducer(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'prod-1',
+      );
 
       expect(httpService.post).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1/producers/prod-1/resume',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1/producers/prod-1/resume',
       );
       expect(result).toBe(response);
     });
@@ -163,10 +209,10 @@ describe('SfuClientService', () => {
       const response = { removed: true };
       httpService.delete.mockReturnValue(of({ data: response }));
 
-      const result = await service.removePeer('room-1', 'peer-1');
+      const result = await service.removePeer(instanceUrl, 'room-1', 'peer-1');
 
       expect(httpService.delete).toHaveBeenCalledWith(
-        '/media-rooms/room-1/peers/peer-1',
+        'http://sfu-1:3001/media-rooms/room-1/peers/peer-1',
       );
       expect(result).toBe(response);
     });
@@ -177,9 +223,11 @@ describe('SfuClientService', () => {
       const response = { closed: true };
       httpService.delete.mockReturnValue(of({ data: response }));
 
-      const result = await service.closeRoom('room-1');
+      const result = await service.closeRoom(instanceUrl, 'room-1');
 
-      expect(httpService.delete).toHaveBeenCalledWith('/media-rooms/room-1');
+      expect(httpService.delete).toHaveBeenCalledWith(
+        'http://sfu-1:3001/media-rooms/room-1',
+      );
       expect(result).toBe(response);
     });
   });
@@ -196,12 +244,12 @@ describe('SfuClientService', () => {
         ),
       );
 
-      await expect(service.createOrGetMediaRoom('room-1')).rejects.toThrow(
-        HttpException,
-      );
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toThrow(HttpException);
 
       try {
-        await service.createOrGetMediaRoom('room-1');
+        await service.createOrGetMediaRoom(instanceUrl, 'room-1');
         fail('expected createOrGetMediaRoom to reject');
       } catch (error) {
         expect(error).toBeInstanceOf(HttpException);
@@ -210,6 +258,8 @@ describe('SfuClientService', () => {
           'MediaRoom room-1 not found',
         );
       }
+
+      expect(sessionsService.invalidate).not.toHaveBeenCalled();
     });
 
     it('falls back to the axios status/message when the body has no message', async () => {
@@ -218,7 +268,7 @@ describe('SfuClientService', () => {
       );
 
       try {
-        await service.createOrGetMediaRoom('room-1');
+        await service.createOrGetMediaRoom(instanceUrl, 'room-1');
         fail('expected createOrGetMediaRoom to reject');
       } catch (error) {
         expect(error).toBeInstanceOf(HttpException);
@@ -226,7 +276,7 @@ describe('SfuClientService', () => {
       }
     });
 
-    it('reports apps/sfu being unreachable as a 503, not a raw AxiosError', async () => {
+    it('reports apps/sfu being unreachable as a 503, not a raw AxiosError, and invalidates the session', async () => {
       const connectionError = new AxiosError(
         'connect ECONNREFUSED 127.0.0.1:3001',
         'ECONNREFUSED',
@@ -234,7 +284,27 @@ describe('SfuClientService', () => {
       httpService.put.mockReturnValue(throwError(() => connectionError));
 
       try {
-        await service.createOrGetMediaRoom('room-1');
+        await service.createOrGetMediaRoom(instanceUrl, 'room-1');
+        fail('expected createOrGetMediaRoom to reject');
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpException);
+        expect((error as HttpException).getStatus()).toBe(503);
+        expect((error as HttpException).message).toContain('unreachable');
+      }
+
+      expect(sessionsService.invalidate).toHaveBeenCalledWith('room-1');
+    });
+
+    it('still reports the 503 even when invalidating the session itself fails', async () => {
+      const connectionError = new AxiosError(
+        'connect ECONNREFUSED 127.0.0.1:3001',
+        'ECONNREFUSED',
+      );
+      httpService.put.mockReturnValue(throwError(() => connectionError));
+      sessionsService.invalidate.mockRejectedValue(new Error('redis down'));
+
+      try {
+        await service.createOrGetMediaRoom(instanceUrl, 'room-1');
         fail('expected createOrGetMediaRoom to reject');
       } catch (error) {
         expect(error).toBeInstanceOf(HttpException);
@@ -247,9 +317,10 @@ describe('SfuClientService', () => {
       const unexpectedError = new Error('something else entirely');
       httpService.put.mockReturnValue(throwError(() => unexpectedError));
 
-      await expect(service.createOrGetMediaRoom('room-1')).rejects.toBe(
-        unexpectedError,
-      );
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toBe(unexpectedError);
+      expect(sessionsService.invalidate).not.toHaveBeenCalled();
     });
   });
 });

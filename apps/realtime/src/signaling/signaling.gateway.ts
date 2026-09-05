@@ -152,6 +152,13 @@ export class SignalingGateway implements OnGatewayDisconnect {
     return { resumed: true };
   }
 
+  @SubscribeMessage('sessionHeartbeat')
+  async sessionHeartbeat(@RequireSocketContext() { roomId }: SocketContext) {
+    await this.signalingService.sessionHeartbeat(roomId);
+
+    return { ok: true };
+  }
+
   async handleDisconnect(client: SignalingSocket) {
     const { roomId, peerId } = client.data;
 

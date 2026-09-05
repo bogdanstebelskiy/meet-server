@@ -3,6 +3,9 @@ import { SignalingService } from '../../../src/signaling/signaling.service';
 import { RoomsService } from '../../../src/rooms/rooms.service';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
 import { ChatService } from '../../../src/chat/chat.service';
+import { SessionsService } from '../../../src/sessions/sessions.service';
+
+const instanceUrl = 'http://sfu-instance:3001';
 
 describe('SignalingService', () => {
   let service: SignalingService;
@@ -31,6 +34,12 @@ describe('SignalingService', () => {
   };
   let chatService: {
     deleteRoomHistory: jest.Mock;
+  };
+  let sessionsService: {
+    get: jest.Mock;
+    assign: jest.Mock;
+    touch: jest.Mock;
+    invalidate: jest.Mock;
   };
   const room = { id: 'room-1', rtpCapabilities: { codecs: [] } };
 
@@ -64,10 +73,18 @@ describe('SignalingService', () => {
       deleteRoomHistory: jest.fn().mockResolvedValue(undefined),
     };
 
+    sessionsService = {
+      get: jest.fn().mockResolvedValue(instanceUrl),
+      assign: jest.fn().mockResolvedValue(instanceUrl),
+      touch: jest.fn().mockResolvedValue(undefined),
+      invalidate: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new SignalingService(
       roomsService as unknown as RoomsService,
       sfuClient as unknown as SfuClientService,
       chatService as unknown as ChatService,
+      sessionsService as unknown as SessionsService,
     );
   });
 
@@ -199,6 +216,7 @@ describe('SignalingService', () => {
 
       expect(result).toBe(transport);
       expect(sfuClient.createTransport).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         'send',
@@ -210,6 +228,40 @@ describe('SignalingService', () => {
         service.createWebRtcTransport('room-1', 'missing', 'send'),
       ).rejects.toThrow(NotFoundException);
       expect(sfuClient.createTransport).not.toHaveBeenCalled();
+    });
+
+    it('re-assigns a session and proceeds when the room has no pinned session (expired or invalidated)', async () => {
+      roomsService.getPeer.mockResolvedValue({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
+      sessionsService.get.mockResolvedValue(undefined);
+      sessionsService.assign.mockResolvedValue(instanceUrl);
+      const transport = { id: 't1' };
+      sfuClient.createTransport.mockResolvedValue(transport);
+
+      const result = await service.createWebRtcTransport(
+        'room-1',
+        'peer-1',
+        'send',
+      );
+
+      expect(sessionsService.assign).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.createTransport).toHaveBeenCalledWith(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+        'send',
+      );
+      expect(result).toBe(transport);
+    });
+  });
+
+  describe('sessionHeartbeat', () => {
+    it('touches the session for the room', async () => {
+      await service.sessionHeartbeat('room-1');
+
+      expect(sessionsService.touch).toHaveBeenCalledWith('room-1');
     });
   });
 
@@ -225,6 +277,7 @@ describe('SignalingService', () => {
       } as any);
 
       expect(sfuClient.connectTransport).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         't1',
@@ -258,6 +311,7 @@ describe('SignalingService', () => {
 
       expect(result).toEqual({ id: 'prod-1' });
       expect(sfuClient.produce).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         't1',
@@ -299,6 +353,7 @@ describe('SignalingService', () => {
 
       expect(result).toBe(consumeResponse);
       expect(sfuClient.consume).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         'prod-1',
@@ -324,6 +379,7 @@ describe('SignalingService', () => {
       await service.resumeConsumer('room-1', 'peer-1', 'cons-1');
 
       expect(sfuClient.resumeConsumer).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         'cons-1',
@@ -348,6 +404,7 @@ describe('SignalingService', () => {
       await service.pauseProducer('room-1', 'peer-1', 'prod-1');
 
       expect(sfuClient.pauseProducer).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         'prod-1',
@@ -363,6 +420,7 @@ describe('SignalingService', () => {
       await service.resumeProducer('room-1', 'peer-1', 'prod-1');
 
       expect(sfuClient.resumeProducer).toHaveBeenCalledWith(
+        instanceUrl,
         'room-1',
         'peer-1',
         'prod-1',
@@ -387,7 +445,11 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
-      expect(sfuClient.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
+      expect(sfuClient.removePeer).toHaveBeenCalledWith(
+        instanceUrl,
+        'room-1',
+        'peer-1',
+      );
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
       expect(sfuClient.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
@@ -400,7 +462,8 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
-      expect(sfuClient.closeRoom).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.closeRoom).toHaveBeenCalledWith(instanceUrl, 'room-1');
+      expect(sessionsService.invalidate).toHaveBeenCalledWith('room-1');
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
     });
 
@@ -413,6 +476,18 @@ describe('SignalingService', () => {
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
       expect(sfuClient.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
+    });
+
+    it('skips sfu teardown entirely when no session was ever assigned or it was already invalidated', async () => {
+      roomsService.isEmpty.mockResolvedValue(true);
+      roomsService.closeRoom.mockResolvedValue(true);
+      sessionsService.get.mockResolvedValue(undefined);
+
+      await service.leave('room-1', 'peer-1');
+
+      expect(sfuClient.removePeer).not.toHaveBeenCalled();
+      expect(sfuClient.closeRoom).not.toHaveBeenCalled();
+      expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
     });
 
     it('waits for the sfu peer removal to land before closing the room there, so a still-in-flight removal never loses the closeRoom race', async () => {
