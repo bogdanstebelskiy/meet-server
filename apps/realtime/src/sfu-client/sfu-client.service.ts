@@ -22,11 +22,7 @@ import type {
   RtpCapabilities,
   RtpParameters,
 } from 'mediasoup/types';
-
-interface HttpExceptionBody {
-  statusCode?: number;
-  message?: string;
-}
+import type { HttpExceptionBody } from './types';
 
 @Injectable()
 export class SfuClientService {
