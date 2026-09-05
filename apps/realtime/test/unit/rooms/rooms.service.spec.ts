@@ -169,6 +169,47 @@ describe('RoomsService', () => {
     });
   });
 
+  describe('peer liveness (issue #31)', () => {
+    it('addPeer sets a liveness TTL for the peer, independent of the peers hash TTL', async () => {
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+
+      expect(redis.ttlOf('peer:room-1:peer-1:alive')).toBe(30);
+    });
+
+    it('touchPeerLiveness refreshes the liveness TTL', async () => {
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+      const expireSpy = jest.spyOn(redis, 'expire');
+
+      await service.touchPeerLiveness('room-1', 'peer-1');
+
+      expect(expireSpy).toHaveBeenCalledWith('peer:room-1:peer-1:alive', 30);
+    });
+
+    it('removePeer deletes the liveness key', async () => {
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+
+      await service.removePeer('room-1', 'peer-1');
+
+      expect(redis.ttlOf('peer:room-1:peer-1:alive')).toBeUndefined();
+    });
+
+    it('getOtherPeers excludes a peer whose owning instance crashed (liveness key expired), while a heartbeating peer stays reported', async () => {
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+      await service.addPeer('room-1', { id: 'peer-2', displayName: 'Bob' });
+      await service.addPeer('room-1', { id: 'peer-3', displayName: 'Carol' });
+
+      // Simulate peer-2's owning instance crashing: its liveness key expires
+      // (here, deleted directly) while its peers-hash field is left behind.
+      await redis.del('peer:room-1:peer-2:alive');
+      // peer-3 keeps heartbeating normally.
+      await service.touchPeerLiveness('room-1', 'peer-3');
+
+      const otherPeers = await service.getOtherPeers('room-1', 'peer-1');
+
+      expect(otherPeers).toEqual([{ id: 'peer-3', displayName: 'Carol' }]);
+    });
+  });
+
   describe('removePeer / isEmpty / closeRoom', () => {
     it('removePeer is a no-op for an unknown peer id, not a throw', async () => {
       await expect(

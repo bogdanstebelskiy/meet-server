@@ -4,7 +4,7 @@ import type { MediaKind } from 'mediasoup/types';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { SessionsService } from '../sessions/sessions.service';
-import { ROOM_TTL_SECONDS } from './constants';
+import { PEER_LIVENESS_TTL_SECONDS, ROOM_TTL_SECONDS } from './constants';
 import { Room, Peer, RoomProducer } from './types';
 
 @Injectable()
@@ -77,7 +77,22 @@ export class RoomsService {
     const otherPeerEntries = entries.filter(
       ([peerId]) => peerId !== excludePeerId,
     );
-    const otherPeers = otherPeerEntries.map(
+
+    if (otherPeerEntries.length === 0) {
+      return [];
+    }
+
+    // A peer whose owning realtime instance crashed never called removePeer,
+    // so its hash field lingers - filter it out here by its separate
+    // liveness key instead, which only a live instance's heartbeat refreshes.
+    const livenessKeys = otherPeerEntries.map(([peerId]) =>
+      this.livenessKey(roomId, peerId),
+    );
+    const livenessValues = await this.redis.mget(...livenessKeys);
+    const livePeerEntries = otherPeerEntries.filter(
+      (_, index) => livenessValues[index],
+    );
+    const otherPeers = livePeerEntries.map(
       ([, raw]) => JSON.parse(raw) as Peer,
     );
 
@@ -89,6 +104,18 @@ export class RoomsService {
     const serializedPeer = JSON.stringify(peer);
     await this.redis.hset(peersKey, peer.id, serializedPeer);
     await this.redis.expire(peersKey, ROOM_TTL_SECONDS);
+
+    const livenessKey = this.livenessKey(roomId, peer.id);
+    await this.redis.set(livenessKey, '1', 'EX', PEER_LIVENESS_TTL_SECONDS);
+  }
+
+  // Refreshed by the same participant-heartbeat event that touches the room's
+  // Session (issue #7) - independent of it, since a crashed realtime instance
+  // should age out only the peers it was serving, not the whole room's sfu
+  // routing.
+  async touchPeerLiveness(roomId: string, peerId: string): Promise<void> {
+    const livenessKey = this.livenessKey(roomId, peerId);
+    await this.redis.expire(livenessKey, PEER_LIVENESS_TTL_SECONDS);
   }
 
   // Sequential, best-effort (no MULTI/Lua transaction): a crash between
@@ -102,6 +129,9 @@ export class RoomsService {
 
     const producersKey = this.producersKey(roomId, peerId);
     await this.redis.del(producersKey);
+
+    const livenessKey = this.livenessKey(roomId, peerId);
+    await this.redis.del(livenessKey);
   }
 
   async isEmpty(roomId: string): Promise<boolean> {
@@ -110,8 +140,11 @@ export class RoomsService {
     return count === 0;
   }
 
-  // A crashed instance never fires this, so a dead peer lingers until #7's
-  // TTL/liveness work lands - TTLs below are the safety net for now.
+  // A crashed instance never fires this, so a dead peer's hash field lingers
+  // in the peers hash until the room's own TTL lapses - isEmpty()/closeRoom
+  // still see it as present, since #31's per-peer liveness key only affects
+  // getOtherPeers, not this count. Room stays open as long as any peer, dead
+  // or alive, is still in the hash.
   // The join-during-close race (#24) is closed by closeRoomIfEmpty (a Lua
   // script, see redis-scripts.ts): it re-checks and deletes the peers hash
   // in one atomic server-side step.
@@ -184,5 +217,9 @@ export class RoomsService {
 
   private producersKey(roomId: string, peerId: string): string {
     return `peer:${roomId}:${peerId}:producers`;
+  }
+
+  private livenessKey(roomId: string, peerId: string): string {
+    return `peer:${roomId}:${peerId}:alive`;
   }
 }
