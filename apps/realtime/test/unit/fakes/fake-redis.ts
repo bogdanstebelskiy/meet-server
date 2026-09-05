@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+
 // Minimal in-memory double for the subset of the ioredis API RoomsService
 // uses. Real Redis behavior (persistence, actual TTL expiry, atomicity) is
 // exercised by the e2e tier - this only needs to prove RoomsService issues
@@ -63,6 +65,30 @@ export class FakeRedis {
       this.ttls.delete(key);
     }
     return deleted;
+  }
+
+  async mget(...keys: string[]): Promise<(string | null)[]> {
+    return keys.map((key) => this.strings.get(key) ?? null);
+  }
+
+  // Single-batch fake stream: real ioredis's multi-batch pagination behavior
+  // is exercised by the e2e tier.
+  scanStream(options: { match: string; count?: number }): Readable {
+    const keys = [...this.strings.keys()];
+    const matchingKeys = keys.filter((key) =>
+      this.matchesPattern(key, options.match),
+    );
+
+    return Readable.from([matchingKeys], { objectMode: true });
+  }
+
+  private matchesPattern(key: string, pattern: string): boolean {
+    if (!pattern.endsWith('*')) {
+      return key === pattern;
+    }
+
+    const prefix = pattern.slice(0, -1);
+    return key.startsWith(prefix);
   }
 
   // Stands in for the closeRoomIfEmpty Lua command (registerRedisScripts).
