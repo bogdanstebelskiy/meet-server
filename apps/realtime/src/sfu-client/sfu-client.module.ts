@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { SfuClientService } from './sfu-client.service';
 import { SessionsModule } from '../sessions/sessions.module';
+import { SfuFailureEmitter } from './sfu-failure.emitter';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { SessionsModule } from '../sessions/sessions.module';
       timeout: 10000,
     }),
   ],
-  providers: [SfuClientService],
-  exports: [SfuClientService],
+  providers: [SfuClientService, SfuFailureEmitter],
+  exports: [SfuClientService, SfuFailureEmitter],
 })
 export class SfuClientModule {}

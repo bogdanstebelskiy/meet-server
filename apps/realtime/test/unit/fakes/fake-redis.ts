@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/require-await -- fakes a real async
+   client's interface synchronously on purpose. */
 import { Readable } from 'node:stream';
 
 // Minimal in-memory double for the subset of the ioredis API RoomsService

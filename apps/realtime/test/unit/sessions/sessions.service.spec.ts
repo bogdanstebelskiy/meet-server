@@ -41,10 +41,10 @@ describe('SessionsService', () => {
       expect(await redis.get('session:room-1')).toBe('http://localhost:3001');
     });
 
-    it('sets a TTL on the session key', async () => {
+    it('sets a TTL on the session key matching Room TTL (issue #34)', async () => {
       await service.assign('room-1');
 
-      expect(redis.ttlOf('session:room-1')).toBe(30);
+      expect(redis.ttlOf('session:room-1')).toBe(60 * 60 * 24);
     });
 
     it('picks the least-loaded live instance', async () => {
@@ -82,16 +82,16 @@ describe('SessionsService', () => {
   });
 
   describe('touch', () => {
-    it('refreshes the session TTL', async () => {
+    it('refreshes the session TTL to match Room TTL (issue #34)', async () => {
       await service.assign('room-1');
       const expireSpy = jest.spyOn(redis, 'expire');
 
       await service.touch('room-1');
 
-      expect(expireSpy).toHaveBeenCalledWith('session:room-1', 30);
+      expect(expireSpy).toHaveBeenCalledWith('session:room-1', 60 * 60 * 24);
     });
 
-    it('debounces a burst of touches into a single EXPIRE call', async () => {
+    it('refreshes on every call, no debounce (issue #34 - refresh is now tied to the bounded join trigger, not a recurring heartbeat)', async () => {
       await service.assign('room-1');
       const expireSpy = jest.spyOn(redis, 'expire');
 
@@ -99,35 +99,7 @@ describe('SessionsService', () => {
       await service.touch('room-1');
       await service.touch('room-1');
 
-      expect(expireSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('refreshes again once the debounce window has passed', async () => {
-      jest.useFakeTimers();
-
-      try {
-        await service.assign('room-1');
-        const expireSpy = jest.spyOn(redis, 'expire');
-
-        await service.touch('room-1');
-        jest.advanceTimersByTime(10_001);
-        await service.touch('room-1');
-
-        expect(expireSpy).toHaveBeenCalledTimes(2);
-      } finally {
-        jest.useRealTimers();
-      }
-    });
-
-    it('debounces separately per room', async () => {
-      await service.assign('room-1');
-      await service.assign('room-2');
-      const expireSpy = jest.spyOn(redis, 'expire');
-
-      await service.touch('room-1');
-      await service.touch('room-2');
-
-      expect(expireSpy).toHaveBeenCalledTimes(2);
+      expect(expireSpy).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -142,18 +114,6 @@ describe('SessionsService', () => {
 
     it('is a no-op when no session exists', async () => {
       await expect(service.invalidate('missing-room')).resolves.not.toThrow();
-    });
-
-    it('lets a following touch refresh again without being debounced by the stale timer', async () => {
-      await service.assign('room-1');
-      await service.touch('room-1');
-      await service.invalidate('room-1');
-      await service.assign('room-1');
-      const expireSpy = jest.spyOn(redis, 'expire');
-
-      await service.touch('room-1');
-
-      expect(expireSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

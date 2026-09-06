@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { of, throwError } from 'rxjs';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
 import { SessionsService } from '../../../src/sessions/sessions.service';
+import { SfuFailureEmitter } from '../../../src/sfu-client/sfu-failure.emitter';
 
 describe('SfuClientService', () => {
   let service: SfuClientService;
@@ -15,6 +16,7 @@ describe('SfuClientService', () => {
   let sessionsService: {
     invalidate: jest.Mock;
   };
+  let sfuFailureEmitter: SfuFailureEmitter;
   const instanceUrl = 'http://sfu-1:3001';
 
   beforeEach(() => {
@@ -26,10 +28,12 @@ describe('SfuClientService', () => {
     sessionsService = {
       invalidate: jest.fn().mockResolvedValue(undefined),
     };
+    sfuFailureEmitter = new SfuFailureEmitter();
 
     service = new SfuClientService(
       httpService as unknown as HttpService,
       sessionsService as unknown as SessionsService,
+      sfuFailureEmitter,
     );
   });
 
@@ -262,6 +266,49 @@ describe('SfuClientService', () => {
       expect(sessionsService.invalidate).not.toHaveBeenCalled();
     });
 
+    it('emits a not-found sfu failure when the 404 is this room MediaRoom missing (issue #34)', async () => {
+      httpService.put.mockReturnValue(
+        throwError(() =>
+          axiosErrorWithResponse(404, {
+            statusCode: 404,
+            message: 'MediaRoom room-1 not found',
+            error: 'Not Found',
+          }),
+        ),
+      );
+      const failureListener = jest.fn();
+      sfuFailureEmitter.on('failure', failureListener);
+
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toThrow(HttpException);
+
+      expect(failureListener).toHaveBeenCalledWith({
+        roomId: 'room-1',
+        reason: 'not-found',
+      });
+    });
+
+    it('does not emit a sfu failure for a 404 about something other than the MediaRoom itself', async () => {
+      httpService.put.mockReturnValue(
+        throwError(() =>
+          axiosErrorWithResponse(404, {
+            statusCode: 404,
+            message: 'Peer peer-1 not found in room room-1',
+            error: 'Not Found',
+          }),
+        ),
+      );
+      const failureListener = jest.fn();
+      sfuFailureEmitter.on('failure', failureListener);
+
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toThrow(HttpException);
+
+      expect(failureListener).not.toHaveBeenCalled();
+    });
+
     it('falls back to the axios status/message when the body has no message', async () => {
       httpService.put.mockReturnValue(
         throwError(() => axiosErrorWithResponse(500, {})),
@@ -293,6 +340,25 @@ describe('SfuClientService', () => {
       }
 
       expect(sessionsService.invalidate).toHaveBeenCalledWith('room-1');
+    });
+
+    it('emits an unreachable sfu failure alongside the 503 (issue #34)', async () => {
+      const connectionError = new AxiosError(
+        'connect ECONNREFUSED 127.0.0.1:3001',
+        'ECONNREFUSED',
+      );
+      httpService.put.mockReturnValue(throwError(() => connectionError));
+      const failureListener = jest.fn();
+      sfuFailureEmitter.on('failure', failureListener);
+
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toThrow(HttpException);
+
+      expect(failureListener).toHaveBeenCalledWith({
+        roomId: 'room-1',
+        reason: 'unreachable',
+      });
     });
 
     it('still reports the 503 even when invalidating the session itself fails', async () => {

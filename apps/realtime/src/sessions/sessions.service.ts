@@ -2,21 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { SfuConfigService } from '../config/sfu-config.service';
-import {
-  INSTANCE_KEY_PREFIX,
-  SESSION_KEY_PREFIX,
-  SESSION_TOUCH_DEBOUNCE_MS,
-  SESSION_TTL_SECONDS,
-} from './constants';
+import { ROOM_TTL_SECONDS } from '../rooms/constants';
+import { INSTANCE_KEY_PREFIX, SESSION_KEY_PREFIX } from './constants';
 import type { InstanceEntry, InstanceRecord } from './types';
 
 @Injectable()
 export class SessionsService {
-  // Same-process-only: collapses a room's heartbeat bursts into one EXPIRE
-  // per debounce window. A different instance handling the same room's
-  // heartbeats keeps its own timer, which is fine since EXPIRE is idempotent.
-  private readonly lastTouchedAt = new Map<string, number>();
-
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly sfuConfig: SfuConfigService,
@@ -25,7 +16,7 @@ export class SessionsService {
   async assign(roomId: string): Promise<string> {
     const instanceUrl = await this.pickInstance();
     const sessionKey = this.sessionKey(roomId);
-    await this.redis.set(sessionKey, instanceUrl, 'EX', SESSION_TTL_SECONDS);
+    await this.redis.set(sessionKey, instanceUrl, 'EX', ROOM_TTL_SECONDS);
 
     return instanceUrl;
   }
@@ -39,23 +30,15 @@ export class SessionsService {
     }
   }
 
+  // Shares Room's own TTL and refresh trigger (getOrCreateRoom's
+  // existing-room branch, rooms.service.ts) instead of a separate, shorter
+  // TTL kept alive by a dedicated heartbeat - issue #34.
   async touch(roomId: string): Promise<void> {
-    const now = Date.now();
-    // 0 for "never touched" - always far outside the debounce window, so a
-    // room's first touch() is never debounced.
-    const lastTouchedAt = this.lastTouchedAt.get(roomId) ?? 0;
-
-    if (now - lastTouchedAt < SESSION_TOUCH_DEBOUNCE_MS) {
-      return;
-    }
-
-    this.lastTouchedAt.set(roomId, now);
     const sessionKey = this.sessionKey(roomId);
-    await this.redis.expire(sessionKey, SESSION_TTL_SECONDS);
+    await this.redis.expire(sessionKey, ROOM_TTL_SECONDS);
   }
 
   async invalidate(roomId: string): Promise<void> {
-    this.lastTouchedAt.delete(roomId);
     const sessionKey = this.sessionKey(roomId);
     await this.redis.del(sessionKey);
   }

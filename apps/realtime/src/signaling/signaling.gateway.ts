@@ -3,12 +3,15 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
+import type { Server } from 'socket.io';
 import { SignalingService } from './signaling.service';
 import { RequireSocketContext } from './decorators/socket-context.decorator';
 import { WsExceptionFilter } from '../common/ws-exception.filter';
+import { BroadcastService } from '../broadcast/broadcast.service';
 import type {
   ConnectTransportPayload,
   ConsumePayload,
@@ -22,8 +25,18 @@ import type { SignalingSocket, SocketContext } from './types';
 
 @WebSocketGateway({ cors: true, transports: ['websocket'] })
 @UseFilters(new WsExceptionFilter())
-export class SignalingGateway implements OnGatewayDisconnect {
-  constructor(private readonly signalingService: SignalingService) {}
+export class SignalingGateway implements OnGatewayDisconnect, OnGatewayInit {
+  constructor(
+    private readonly signalingService: SignalingService,
+    private readonly broadcastService: BroadcastService,
+  ) {}
+
+  // Hands this gateway's Server instance over to BroadcastService, the only
+  // seam through which code outside signaling (recovery, issue #34) can
+  // still reach clients.
+  afterInit(server: Server): void {
+    this.broadcastService.setServer(server);
+  }
 
   @SubscribeMessage('join')
   async join(
@@ -150,15 +163,6 @@ export class SignalingGateway implements OnGatewayDisconnect {
     client.to(roomId).emit('producerResumed', { peerId, producerId });
 
     return { resumed: true };
-  }
-
-  @SubscribeMessage('sessionHeartbeat')
-  async sessionHeartbeat(
-    @RequireSocketContext() { roomId, peerId }: SocketContext,
-  ) {
-    await this.signalingService.sessionHeartbeat(roomId, peerId);
-
-    return { ok: true };
   }
 
   async handleDisconnect(client: SignalingSocket) {
