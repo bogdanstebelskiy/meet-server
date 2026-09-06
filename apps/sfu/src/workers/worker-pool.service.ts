@@ -4,7 +4,6 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import * as os from 'node:os';
 import { createWorker } from 'mediasoup';
 import type { Worker } from 'mediasoup/types';
 import { WorkerSettingsConfigService } from '../config/worker-settings-config.service';
@@ -20,7 +19,7 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    const numWorkers = os.cpus().length;
+    const numWorkers = this.workerSettingsConfig.numWorkers;
 
     for (let idx = 0; idx < numWorkers; ++idx) {
       const workerSettings = this.workerSettingsConfig.settings;

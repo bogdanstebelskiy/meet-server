@@ -1,10 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import * as os from 'node:os';
 import { createWorker } from 'mediasoup';
 import { WorkerPoolService } from '../../../src/workers/worker-pool.service';
 import { WorkerSettingsConfigService } from '../../../src/config/worker-settings-config.service';
 
-jest.mock('node:os');
 jest.mock('mediasoup');
 
 describe('WorkerPoolService', () => {
@@ -19,13 +17,18 @@ describe('WorkerPoolService', () => {
 
   beforeEach(async () => {
     nextPid = 1000;
-    (os.cpus as jest.Mock).mockReturnValue([{}, {}, {}]);
     (createWorker as jest.Mock).mockImplementation(() =>
       Promise.resolve(createFakeWorker()),
     );
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [WorkerPoolService, WorkerSettingsConfigService],
+      providers: [
+        WorkerPoolService,
+        {
+          provide: WorkerSettingsConfigService,
+          useValue: { settings: {}, numWorkers: 3 },
+        },
+      ],
     }).compile();
 
     service = module.get<WorkerPoolService>(WorkerPoolService);
@@ -36,7 +39,7 @@ describe('WorkerPoolService', () => {
     jest.useRealTimers();
   });
 
-  it('spawns one worker per reported CPU core on init', async () => {
+  it('spawns the configured number of workers on init', async () => {
     await service.onModuleInit();
 
     expect(createWorker).toHaveBeenCalledTimes(3);
