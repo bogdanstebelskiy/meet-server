@@ -33,6 +33,7 @@ export class MediaRoomsService {
     const existing = this.rooms.get(roomId);
 
     if (existing) {
+      existing.touch();
       return existing;
     }
 
@@ -79,6 +80,8 @@ export class MediaRoomsService {
     if (!room) {
       throw new NotFoundException(`MediaRoom ${roomId} not found`);
     }
+
+    room.touch();
 
     return room;
   }
@@ -235,6 +238,7 @@ export class MediaRoomsService {
       return;
     }
 
+    room.touch();
     room.removePeer(peerId);
   }
 
@@ -252,11 +256,29 @@ export class MediaRoomsService {
       return false;
     }
 
-    room.close();
-    this.workerPool.trackRouterClosed(room.worker);
-    this.rooms.delete(roomId);
+    this.releaseRoom(room);
 
     return true;
+  }
+
+  // A realtime instance that crashes (or otherwise never reaches leave())
+  // never calls closeRoom, so its peers are still listed here - unlike
+  // closeRoom, this force-closes regardless of isEmpty().
+  closeStaleRooms(thresholdMs: number, now: number = Date.now()): string[] {
+    const closedRoomIds: string[] = [];
+
+    for (const room of this.rooms.values()) {
+      const isStale = room.isStaleAsOf(now, thresholdMs);
+
+      if (!isStale) {
+        continue;
+      }
+
+      this.releaseRoom(room);
+      closedRoomIds.push(room.id);
+    }
+
+    return closedRoomIds;
   }
 
   // Proportional to actual forwarding work, unlike room or worker count.
@@ -270,6 +292,12 @@ export class MediaRoomsService {
     }
 
     return total;
+  }
+
+  private releaseRoom(room: MediaRoom): void {
+    room.close();
+    this.workerPool.trackRouterClosed(room.worker);
+    this.rooms.delete(room.id);
   }
 
   private findProducer(roomId: string, peerId: string, producerId: string) {

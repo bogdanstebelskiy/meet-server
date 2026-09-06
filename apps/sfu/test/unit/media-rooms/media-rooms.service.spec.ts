@@ -145,6 +145,46 @@ describe('MediaRoomsService', () => {
     });
   });
 
+  describe('staleness tracking', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('touches the room on getRoom access', async () => {
+      stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      const room = await service.getOrCreateRoom('room-1');
+
+      jest.setSystemTime(5000);
+      service.getRoom('room-1');
+
+      expect(room.lastActivityAt).toBe(5000);
+    });
+
+    it('touches an already-cached room on a repeated getOrCreateRoom call', async () => {
+      const worker = stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      const room = await service.getOrCreateRoom('room-1');
+
+      jest.setSystemTime(6000);
+      await service.getOrCreateRoom('room-1');
+
+      expect(room.lastActivityAt).toBe(6000);
+      expect(worker.createRouter).toHaveBeenCalledTimes(1);
+    });
+
+    it('touches the room on removePeer, even for a peer that is not found', async () => {
+      stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      const room = await service.getOrCreateRoom('room-1');
+
+      jest.setSystemTime(7000);
+      service.removePeer('room-1', 'ghost');
+
+      expect(room.lastActivityAt).toBe(7000);
+    });
+  });
+
   describe('createTransport', () => {
     it('creates and assigns sendTransport for direction "send", lazily creating the peer', async () => {
       stubWorkerCreatingRouter();
@@ -482,6 +522,83 @@ describe('MediaRoomsService', () => {
 
     it('reports already closed for an unknown room, so a double-close race stays quiet', () => {
       expect(service.closeRoom('missing')).toBe(true);
+    });
+  });
+
+  describe('closeStaleRooms', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('force-closes a room past the threshold even though peers still remain, releasing the router and worker slot', async () => {
+      const worker = stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      jest.setSystemTime(1000 + 60_000);
+      const closedRoomIds = service.closeStaleRooms(30_000);
+
+      expect(closedRoomIds).toEqual(['room-1']);
+      expect(router.close).toHaveBeenCalledTimes(1);
+      expect(workerPool.trackRouterClosed).toHaveBeenCalledWith(worker);
+      expect(() => service.getRoom('room-1')).toThrow(NotFoundException);
+    });
+
+    it('leaves a room under normal-but-quiet use alone, since occasional produce/consume keeps refreshing it', async () => {
+      stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      const room = await service.getOrCreateRoom('room-1');
+      room.getOrCreatePeer('peer-1');
+
+      // A produce/consume-style call in the middle of the quiet period
+      // refreshes the room via getRoom, same as any real REST call would.
+      jest.setSystemTime(1000 + 20_000);
+      service.getRoom('room-1');
+
+      jest.setSystemTime(1000 + 45_000);
+      const closedRoomIds = service.closeStaleRooms(30_000);
+
+      expect(closedRoomIds).toEqual([]);
+      expect(router.close).not.toHaveBeenCalled();
+      expect(service.getRoom('room-1')).toBe(room);
+    });
+
+    it('does not touch rooms still under the threshold', async () => {
+      stubWorkerCreatingRouter();
+      jest.useFakeTimers().setSystemTime(1000);
+      await service.getOrCreateRoom('room-1');
+
+      jest.setSystemTime(1000 + 10_000);
+      const closedRoomIds = service.closeStaleRooms(30_000);
+
+      expect(closedRoomIds).toEqual([]);
+      expect(router.close).not.toHaveBeenCalled();
+    });
+
+    it('closes only the rooms that are actually stale, one room going quiet does not affect another', async () => {
+      const workerA = createFakeWorker();
+      const routerA = { ...router, close: jest.fn() };
+      workerA.createRouter.mockResolvedValue(routerA);
+      const workerB = createFakeWorker();
+      const routerB = { ...router, close: jest.fn() };
+      workerB.createRouter.mockResolvedValue(routerB);
+
+      jest.useFakeTimers().setSystemTime(1000);
+      workerPool.reserveWorker.mockReturnValueOnce(workerA);
+      await service.getOrCreateRoom('stale-room');
+      workerPool.reserveWorker.mockReturnValueOnce(workerB);
+      await service.getOrCreateRoom('fresh-room');
+
+      jest.setSystemTime(1000 + 40_000);
+      service.getRoom('fresh-room');
+
+      const closedRoomIds = service.closeStaleRooms(30_000);
+
+      expect(closedRoomIds).toEqual(['stale-room']);
+      expect(routerA.close).toHaveBeenCalledTimes(1);
+      expect(routerB.close).not.toHaveBeenCalled();
+      expect(service.getRoom('fresh-room')).toBeDefined();
     });
   });
 
