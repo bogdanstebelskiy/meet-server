@@ -20,7 +20,12 @@ export class FakeRedis {
     value: string,
     _mode: 'EX',
     ttlSeconds: number,
-  ): Promise<'OK'> {
+    nx?: 'NX',
+  ): Promise<'OK' | null> {
+    if (nx === 'NX' && this.strings.has(key)) {
+      return null;
+    }
+
     this.strings.set(key, value);
     this.ttls.set(key, ttlSeconds);
     return 'OK';

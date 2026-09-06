@@ -3,7 +3,11 @@ import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { SfuConfigService } from '../config/sfu-config.service';
 import { ROOM_TTL_SECONDS } from '../rooms/constants';
-import { INSTANCE_KEY_PREFIX, SESSION_KEY_PREFIX } from './constants';
+import {
+  INSTANCE_KEY_PREFIX,
+  SESSION_KEY_PREFIX,
+  SESSION_LOCK_TTL_SECONDS,
+} from './constants';
 import type { InstanceEntry, InstanceRecord } from './types';
 
 @Injectable()
@@ -41,6 +45,24 @@ export class SessionsService {
   async invalidate(roomId: string): Promise<void> {
     const sessionKey = this.sessionKey(roomId);
     await this.redis.del(sessionKey);
+  }
+
+  // Exclusive per-room lock for reassignment (issue #34's recovery): first
+  // caller to acquire it runs recovery, everyone else's own call still
+  // fails but doesn't re-trigger it. Rooted under the session's own key,
+  // not a separate namespace - the thing being protected is this room's
+  // sfu assignment, which is Session's concept to own.
+  async tryLockReassignment(roomId: string): Promise<boolean> {
+    const lockKey = this.lockKey(roomId);
+    const result = await this.redis.set(
+      lockKey,
+      '1',
+      'EX',
+      SESSION_LOCK_TTL_SECONDS,
+      'NX',
+    );
+
+    return result === 'OK';
   }
 
   // No live instances registered (single-fixed-instance setups, e2e) falls
@@ -105,5 +127,9 @@ export class SessionsService {
 
   private sessionKey(roomId: string): string {
     return `${SESSION_KEY_PREFIX}${roomId}`;
+  }
+
+  private lockKey(roomId: string): string {
+    return `${this.sessionKey(roomId)}:lock`;
   }
 }

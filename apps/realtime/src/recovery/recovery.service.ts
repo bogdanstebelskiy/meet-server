@@ -1,17 +1,11 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import type Redis from 'ioredis';
-import { REDIS_CLIENT } from '../redis/redis.provider';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RoomsService } from '../rooms/rooms.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { SfuFailureEmitter } from '../sfu-client/sfu-failure.emitter';
 import { SFU_FAILURE_EVENT } from '../sfu-client/constants';
 import { BroadcastService } from '../broadcast/broadcast.service';
-import {
-  RECOVERY_LOCK_KEY_PREFIX,
-  RECOVERY_LOCK_TTL_SECONDS,
-  ROOM_RECOVERED_EVENT,
-} from './constants';
+import { ROOM_RECOVERED_EVENT } from './constants';
 import type { SfuFailureEvent, SfuFailureReason } from '../sfu-client/types';
 
 // Reactive recovery (issue #34): a room's pinned sfu instance dying or
@@ -25,7 +19,6 @@ export class RecoveryService implements OnModuleInit {
   private readonly logger = new Logger(RecoveryService.name);
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly roomsService: RoomsService,
     private readonly sessionsService: SessionsService,
     private readonly sfuClient: SfuClientService,
@@ -45,7 +38,7 @@ export class RecoveryService implements OnModuleInit {
   }
 
   async recover(roomId: string, reason: SfuFailureReason): Promise<void> {
-    const acquired = await this.acquireLock(roomId);
+    const acquired = await this.sessionsService.tryLockReassignment(roomId);
 
     if (!acquired) {
       return;
@@ -68,22 +61,5 @@ export class RecoveryService implements OnModuleInit {
     this.broadcastService.broadcastToRoom(roomId, ROOM_RECOVERED_EVENT, {
       roomId,
     });
-  }
-
-  private async acquireLock(roomId: string): Promise<boolean> {
-    const lockKey = this.lockKey(roomId);
-    const result = await this.redis.set(
-      lockKey,
-      '1',
-      'EX',
-      RECOVERY_LOCK_TTL_SECONDS,
-      'NX',
-    );
-
-    return result === 'OK';
-  }
-
-  private lockKey(roomId: string): string {
-    return `${RECOVERY_LOCK_KEY_PREFIX}${roomId}`;
   }
 }

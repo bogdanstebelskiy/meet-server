@@ -116,4 +116,29 @@ describe('SessionsService', () => {
       await expect(service.invalidate('missing-room')).resolves.not.toThrow();
     });
   });
+
+  describe('tryLockReassignment', () => {
+    it("acquires the lock, rooted under this room's own session key", async () => {
+      const acquired = await service.tryLockReassignment('room-1');
+
+      expect(acquired).toBe(true);
+      expect(redis.ttlOf('session:room-1:lock')).toBe(10);
+    });
+
+    it('fails to acquire when another caller already holds the lock', async () => {
+      await service.tryLockReassignment('room-1');
+
+      const acquiredAgain = await service.tryLockReassignment('room-1');
+
+      expect(acquiredAgain).toBe(false);
+    });
+
+    it('locks are independent per room', async () => {
+      await service.tryLockReassignment('room-1');
+
+      const acquiredForOtherRoom = await service.tryLockReassignment('room-2');
+
+      expect(acquiredForOtherRoom).toBe(true);
+    });
+  });
 });

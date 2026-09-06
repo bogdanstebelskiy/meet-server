@@ -9,23 +9,24 @@ const instanceUrl = 'http://sfu-instance:3001';
 
 describe('RecoveryService', () => {
   let service: RecoveryService;
-  let redis: { set: jest.Mock };
   let roomsService: { resetAllProducers: jest.Mock };
-  let sessionsService: { get: jest.Mock; assign: jest.Mock };
+  let sessionsService: {
+    get: jest.Mock;
+    assign: jest.Mock;
+    tryLockReassignment: jest.Mock;
+  };
   let sfuClient: { createOrGetMediaRoom: jest.Mock };
   let broadcastService: { broadcastToRoom: jest.Mock };
   let sfuFailureEmitter: SfuFailureEmitter;
 
   beforeEach(() => {
-    redis = {
-      set: jest.fn().mockResolvedValue('OK'),
-    };
     roomsService = {
       resetAllProducers: jest.fn().mockResolvedValue(undefined),
     };
     sessionsService = {
       get: jest.fn().mockResolvedValue(instanceUrl),
       assign: jest.fn().mockResolvedValue(instanceUrl),
+      tryLockReassignment: jest.fn().mockResolvedValue(true),
     };
     sfuClient = {
       createOrGetMediaRoom: jest.fn().mockResolvedValue({
@@ -39,7 +40,6 @@ describe('RecoveryService', () => {
     sfuFailureEmitter = new SfuFailureEmitter();
 
     service = new RecoveryService(
-      redis as any,
       roomsService as unknown as RoomsService,
       sessionsService as unknown as SessionsService,
       sfuClient as unknown as SfuClientService,
@@ -49,20 +49,16 @@ describe('RecoveryService', () => {
   });
 
   describe('recover', () => {
-    it('acquires a per-room lock before doing anything', async () => {
+    it('acquires a per-room reassignment lock before doing anything', async () => {
       await service.recover('room-1', 'unreachable');
 
-      expect(redis.set).toHaveBeenCalledWith(
-        'recovery:room-1',
-        '1',
-        'EX',
-        10,
-        'NX',
+      expect(sessionsService.tryLockReassignment).toHaveBeenCalledWith(
+        'room-1',
       );
     });
 
     it('skips recovery entirely when the lock is already held', async () => {
-      redis.set.mockResolvedValue(null);
+      sessionsService.tryLockReassignment.mockResolvedValue(false);
 
       await service.recover('room-1', 'unreachable');
 
