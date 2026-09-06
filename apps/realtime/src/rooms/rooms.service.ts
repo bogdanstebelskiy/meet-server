@@ -3,6 +3,7 @@ import type Redis from 'ioredis';
 import type { MediaKind } from 'mediasoup/types';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
+import { SfuRegistryService } from '../sfu-client/sfu-registry.service';
 import { ROOM_TTL_SECONDS } from './constants';
 import { Room, Peer, RoomProducer } from './types';
 
@@ -19,6 +20,7 @@ export class RoomsService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly sfuClient: SfuClientService,
+    private readonly sfuRegistry: SfuRegistryService,
   ) {}
 
   async getOrCreateRoom(roomId: string): Promise<Room> {
@@ -158,9 +160,12 @@ export class RoomsService {
   }
 
   private async createRoom(roomId: string): Promise<Room> {
-    const { rtpCapabilities } =
-      await this.sfuClient.createOrGetMediaRoom(roomId);
-    const room: Room = { id: roomId, rtpCapabilities };
+    const sfuNodeUrl = await this.sfuRegistry.pickLeastLoaded();
+    const { rtpCapabilities } = await this.sfuClient.createOrGetMediaRoom(
+      sfuNodeUrl,
+      roomId,
+    );
+    const room: Room = { id: roomId, rtpCapabilities, sfuNodeUrl };
 
     const roomKey = this.roomKey(roomId);
     const serializedRoom = JSON.stringify(room);

@@ -5,10 +5,19 @@ import { ConfigService } from '@nestjs/config';
 export class SfuConfigService {
   constructor(private readonly configService: ConfigService) {}
 
-  get serviceUrl(): string {
-    return this.configService.get<string>(
-      'SFU_SERVICE_URL',
+  // One realtime deployment can front several independent sfu instances -
+  // rooms are pinned to whichever one is least loaded at creation time (see
+  // SfuRegistryService), not routed through a load balancer.
+  get serviceUrls(): string[] {
+    const raw = this.configService.get<string>(
+      'SFU_SERVICE_URLS',
       'http://localhost:3001',
     );
+
+    const rawUrls = raw.split(',');
+    const trimmedUrls = rawUrls.map((url) => url.trim());
+    const urls = trimmedUrls.filter((url) => url.length > 0);
+
+    return urls;
   }
 }

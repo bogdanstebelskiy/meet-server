@@ -32,7 +32,11 @@ describe('SignalingService', () => {
   let chatService: {
     deleteRoomHistory: jest.Mock;
   };
-  const room = { id: 'room-1', rtpCapabilities: { codecs: [] } };
+  const room = {
+    id: 'room-1',
+    rtpCapabilities: { codecs: [] },
+    sfuNodeUrl: 'http://sfu-1',
+  };
 
   beforeEach(() => {
     roomsService = {
@@ -199,6 +203,7 @@ describe('SignalingService', () => {
 
       expect(result).toBe(transport);
       expect(sfuClient.createTransport).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         'send',
@@ -225,6 +230,7 @@ describe('SignalingService', () => {
       } as any);
 
       expect(sfuClient.connectTransport).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         't1',
@@ -258,6 +264,7 @@ describe('SignalingService', () => {
 
       expect(result).toEqual({ id: 'prod-1' });
       expect(sfuClient.produce).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         't1',
@@ -299,6 +306,7 @@ describe('SignalingService', () => {
 
       expect(result).toBe(consumeResponse);
       expect(sfuClient.consume).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         'prod-1',
@@ -324,6 +332,7 @@ describe('SignalingService', () => {
       await service.resumeConsumer('room-1', 'peer-1', 'cons-1');
 
       expect(sfuClient.resumeConsumer).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         'cons-1',
@@ -348,6 +357,7 @@ describe('SignalingService', () => {
       await service.pauseProducer('room-1', 'peer-1', 'prod-1');
 
       expect(sfuClient.pauseProducer).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         'prod-1',
@@ -363,6 +373,7 @@ describe('SignalingService', () => {
       await service.resumeProducer('room-1', 'peer-1', 'prod-1');
 
       expect(sfuClient.resumeProducer).toHaveBeenCalledWith(
+        'http://sfu-1',
         'room-1',
         'peer-1',
         'prod-1',
@@ -387,7 +398,11 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
-      expect(sfuClient.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
+      expect(sfuClient.removePeer).toHaveBeenCalledWith(
+        'http://sfu-1',
+        'room-1',
+        'peer-1',
+      );
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
       expect(sfuClient.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
@@ -400,7 +415,10 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
-      expect(sfuClient.closeRoom).toHaveBeenCalledWith('room-1');
+      expect(sfuClient.closeRoom).toHaveBeenCalledWith(
+        'http://sfu-1',
+        'room-1',
+      );
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
     });
 

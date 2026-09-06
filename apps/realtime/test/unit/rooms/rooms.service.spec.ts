@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RoomsService } from '../../../src/rooms/rooms.service';
 import { SfuClientService } from '../../../src/sfu-client/sfu-client.service';
+import { SfuRegistryService } from '../../../src/sfu-client/sfu-registry.service';
 import { REDIS_CLIENT } from '../../../src/redis/redis.provider';
 import { FakeRedis } from '../fakes/fake-redis';
 
@@ -8,11 +9,15 @@ describe('RoomsService', () => {
   let service: RoomsService;
   let redis: FakeRedis;
   let sfuClient: { createOrGetMediaRoom: jest.Mock };
+  let sfuRegistry: { pickLeastLoaded: jest.Mock };
 
   beforeEach(async () => {
     redis = new FakeRedis();
     sfuClient = {
       createOrGetMediaRoom: jest.fn(),
+    };
+    sfuRegistry = {
+      pickLeastLoaded: jest.fn().mockResolvedValue('http://sfu-1'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -20,6 +25,7 @@ describe('RoomsService', () => {
         RoomsService,
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: SfuClientService, useValue: sfuClient },
+        { provide: SfuRegistryService, useValue: sfuRegistry },
       ],
     }).compile();
 
@@ -36,9 +42,32 @@ describe('RoomsService', () => {
 
       const room = await service.getOrCreateRoom('room-1');
 
-      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith('room-1');
-      expect(room).toEqual({ id: 'room-1', rtpCapabilities });
+      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith(
+        'http://sfu-1',
+        'room-1',
+      );
+      expect(room).toEqual({
+        id: 'room-1',
+        rtpCapabilities,
+        sfuNodeUrl: 'http://sfu-1',
+      });
       expect(await redis.get('room:room-1')).toBe(JSON.stringify(room));
+    });
+
+    it('picks the sfu instance to assign via SfuRegistryService', async () => {
+      sfuRegistry.pickLeastLoaded.mockResolvedValue('http://sfu-2');
+      sfuClient.createOrGetMediaRoom.mockResolvedValue({
+        roomId: 'room-1',
+        rtpCapabilities: {},
+      });
+
+      const room = await service.getOrCreateRoom('room-1');
+
+      expect(room.sfuNodeUrl).toBe('http://sfu-2');
+      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith(
+        'http://sfu-2',
+        'room-1',
+      );
     });
 
     it('sets a TTL on the room key', async () => {
@@ -225,6 +254,7 @@ describe('RoomsService', () => {
       expect(await service.getRoom('room-1')).toEqual({
         id: 'room-1',
         rtpCapabilities: {},
+        sfuNodeUrl: 'http://sfu-1',
       });
       expect(await service.getPeer('room-1', 'peer-2')).toEqual({
         id: 'peer-2',

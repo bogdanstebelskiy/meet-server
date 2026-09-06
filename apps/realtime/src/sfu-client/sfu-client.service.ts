@@ -9,6 +9,7 @@ import type {
   ConsumeResponse,
   CreateTransportResponse,
   MediaRoomResponse,
+  MediaRoomsStatsResponse,
   PauseProducerResponse,
   ProduceResponse,
   RemovePeerResponse,
@@ -28,79 +29,94 @@ import type { HttpExceptionBody } from './types';
 export class SfuClientService {
   constructor(private readonly httpService: HttpService) {}
 
-  createOrGetMediaRoom(roomId: string): Promise<MediaRoomResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.createOrGetRoom, {
+  getStats(nodeUrl: string): Promise<MediaRoomsStatsResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.stats, {});
+
+    return this.request(() =>
+      this.httpService.get<MediaRoomsStatsResponse>(url),
+    );
+  }
+
+  createOrGetMediaRoom(
+    nodeUrl: string,
+    roomId: string,
+  ): Promise<MediaRoomResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.createOrGetRoom, {
       roomId,
     });
 
-    return this.request(() => this.httpService.put<MediaRoomResponse>(path));
+    return this.request(() => this.httpService.put<MediaRoomResponse>(url));
   }
 
   createTransport(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     direction: TransportDirection,
   ): Promise<CreateTransportResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.createTransport, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.createTransport, {
       roomId,
       peerId,
     });
 
     return this.request(() =>
-      this.httpService.post<CreateTransportResponse>(path, { direction }),
+      this.httpService.post<CreateTransportResponse>(url, { direction }),
     );
   }
 
   connectTransport(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     transportId: string,
     dtlsParameters: DtlsParameters,
   ): Promise<ConnectTransportResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.connectTransport, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.connectTransport, {
       roomId,
       peerId,
       transportId,
     });
 
     return this.request(() =>
-      this.httpService.post<ConnectTransportResponse>(path, {
+      this.httpService.post<ConnectTransportResponse>(url, {
         dtlsParameters,
       }),
     );
   }
 
   produce(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     transportId: string,
     kind: MediaKind,
     rtpParameters: RtpParameters,
   ): Promise<ProduceResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.produce, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.produce, {
       roomId,
       peerId,
       transportId,
     });
 
     return this.request(() =>
-      this.httpService.post<ProduceResponse>(path, { kind, rtpParameters }),
+      this.httpService.post<ProduceResponse>(url, { kind, rtpParameters }),
     );
   }
 
   consume(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
     rtpCapabilities: RtpCapabilities,
   ): Promise<ConsumeResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.consume, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.consume, {
       roomId,
       peerId,
     });
 
     return this.request(() =>
-      this.httpService.post<ConsumeResponse>(path, {
+      this.httpService.post<ConsumeResponse>(url, {
         producerId,
         rtpCapabilities,
       }),
@@ -108,68 +124,84 @@ export class SfuClientService {
   }
 
   resumeConsumer(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     consumerId: string,
   ): Promise<ResumeConsumerResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.resumeConsumer, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.resumeConsumer, {
       roomId,
       peerId,
       consumerId,
     });
 
     return this.request(() =>
-      this.httpService.post<ResumeConsumerResponse>(path),
+      this.httpService.post<ResumeConsumerResponse>(url),
     );
   }
 
   pauseProducer(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
   ): Promise<PauseProducerResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.pauseProducer, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.pauseProducer, {
       roomId,
       peerId,
       producerId,
     });
 
     return this.request(() =>
-      this.httpService.post<PauseProducerResponse>(path),
+      this.httpService.post<PauseProducerResponse>(url),
     );
   }
 
   resumeProducer(
+    nodeUrl: string,
     roomId: string,
     peerId: string,
     producerId: string,
   ): Promise<ResumeProducerResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.resumeProducer, {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.resumeProducer, {
       roomId,
       peerId,
       producerId,
     });
 
     return this.request(() =>
-      this.httpService.post<ResumeProducerResponse>(path),
+      this.httpService.post<ResumeProducerResponse>(url),
     );
   }
 
-  removePeer(roomId: string, peerId: string): Promise<RemovePeerResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.removePeer, {
+  removePeer(
+    nodeUrl: string,
+    roomId: string,
+    peerId: string,
+  ): Promise<RemovePeerResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.removePeer, {
       roomId,
       peerId,
     });
 
-    return this.request(() =>
-      this.httpService.delete<RemovePeerResponse>(path),
-    );
+    return this.request(() => this.httpService.delete<RemovePeerResponse>(url));
   }
 
-  closeRoom(roomId: string): Promise<CloseRoomResponse> {
-    const path = buildMediaRoomPath(MEDIA_ROOM_ROUTES.closeRoom, { roomId });
+  closeRoom(nodeUrl: string, roomId: string): Promise<CloseRoomResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.closeRoom, { roomId });
 
-    return this.request(() => this.httpService.delete<CloseRoomResponse>(path));
+    return this.request(() => this.httpService.delete<CloseRoomResponse>(url));
+  }
+
+  // Every call targets a specific sfu instance's URL rather than a shared
+  // fixed baseURL - see sfu-client.module.ts.
+  private buildUrl(
+    nodeUrl: string,
+    pattern: string,
+    params: Record<string, string>,
+  ): string {
+    const path = buildMediaRoomPath(pattern, params);
+    return `${nodeUrl}${path}`;
   }
 
   // Reconstructs a real HttpException from apps/sfu's default Nest error

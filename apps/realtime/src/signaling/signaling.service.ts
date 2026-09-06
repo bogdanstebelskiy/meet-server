@@ -90,8 +90,14 @@ export class SignalingService {
     direction: TransportDirection,
   ) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    return this.sfuClient.createTransport(roomId, peerId, direction);
+    return this.sfuClient.createTransport(
+      sfuNodeUrl,
+      roomId,
+      peerId,
+      direction,
+    );
   }
 
   async connectWebRtcTransport(
@@ -101,8 +107,10 @@ export class SignalingService {
     dtlsParameters: DtlsParameters,
   ) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
     await this.sfuClient.connectTransport(
+      sfuNodeUrl,
       roomId,
       peerId,
       transportId,
@@ -118,8 +126,10 @@ export class SignalingService {
     rtpParameters: RtpParameters,
   ) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
     const { id } = await this.sfuClient.produce(
+      sfuNodeUrl,
       roomId,
       peerId,
       transportId,
@@ -138,26 +148,36 @@ export class SignalingService {
     rtpCapabilities: RtpCapabilities,
   ) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    return this.sfuClient.consume(roomId, peerId, producerId, rtpCapabilities);
+    return this.sfuClient.consume(
+      sfuNodeUrl,
+      roomId,
+      peerId,
+      producerId,
+      rtpCapabilities,
+    );
   }
 
   async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    await this.sfuClient.resumeConsumer(roomId, peerId, consumerId);
+    await this.sfuClient.resumeConsumer(sfuNodeUrl, roomId, peerId, consumerId);
   }
 
   async pauseProducer(roomId: string, peerId: string, producerId: string) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    await this.sfuClient.pauseProducer(roomId, peerId, producerId);
+    await this.sfuClient.pauseProducer(sfuNodeUrl, roomId, peerId, producerId);
   }
 
   async resumeProducer(roomId: string, peerId: string, producerId: string) {
     await this.getPeer(roomId, peerId);
+    const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    await this.sfuClient.resumeProducer(roomId, peerId, producerId);
+    await this.sfuClient.resumeProducer(sfuNodeUrl, roomId, peerId, producerId);
   }
 
   async leave(roomId: string, peerId: string): Promise<void> {
@@ -174,7 +194,7 @@ export class SignalingService {
       // room.isEmpty() in apps/sfu too, and a still-in-flight removal would
       // make it see this peer as still present and no-op forever, since
       // nothing ever retries closeRoom once the Redis room key is gone.
-      await this.sfuClient.removePeer(roomId, peerId);
+      await this.sfuClient.removePeer(room.sfuNodeUrl, roomId, peerId);
     } catch (error) {
       this.logger.error(
         `Failed to remove peer ${peerId} from sfu room ${roomId}`,
@@ -199,7 +219,7 @@ export class SignalingService {
     }
 
     this.sfuClient
-      .closeRoom(roomId)
+      .closeRoom(room.sfuNodeUrl, roomId)
       .catch((error) =>
         this.logger.error(`Failed to close sfu room ${roomId}`, error),
       );
@@ -211,5 +231,10 @@ export class SignalingService {
           error,
         ),
       );
+  }
+
+  private async resolveSfuNodeUrl(roomId: string): Promise<string> {
+    const room = await this.getRoom(roomId);
+    return room.sfuNodeUrl;
   }
 }
