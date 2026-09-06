@@ -8,10 +8,28 @@ export class MediaRoom {
 
   readonly peers = new Map<string, MediaPeer>();
 
-  constructor(id: string, router: Router, worker: Worker) {
+  // Refreshed by every REST call that touches this room - the stale-sweep
+  // module force-closes a room whose activity falls too far behind now().
+  lastActivityAt: number;
+
+  constructor(
+    id: string,
+    router: Router,
+    worker: Worker,
+    now: number = Date.now(),
+  ) {
     this.id = id;
     this.router = router;
     this.worker = worker;
+    this.lastActivityAt = now;
+  }
+
+  touch(now: number = Date.now()): void {
+    this.lastActivityAt = now;
+  }
+
+  isStaleAsOf(now: number, thresholdMs: number): boolean {
+    return now - this.lastActivityAt > thresholdMs;
   }
 
   getOrCreatePeer(peerId: string): MediaPeer {
