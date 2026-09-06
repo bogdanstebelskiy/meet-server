@@ -2,7 +2,11 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { isAxiosError, type AxiosResponse } from 'axios';
-import { buildMediaRoomPath, MEDIA_ROOM_ROUTES } from '@app/media-contracts';
+import {
+  buildMediaRoomPath,
+  MEDIA_ROOM_ERROR_CODE,
+  MEDIA_ROOM_ROUTES,
+} from '@app/media-contracts';
 import type {
   CloseRoomResponse,
   ConnectTransportResponse,
@@ -252,12 +256,10 @@ export class SfuClientService {
       const status = body.statusCode ?? error.response.status;
       const message = body.message ?? error.message;
 
-      // Same underlying problem as the instance being unreachable - Session
-      // points somewhere this room's MediaRoom no longer exists (e.g. after
-      // an sfu restart) - issue #34. Compared against the raw 404 (not
-      // HttpStatus.NOT_FOUND) since status here is a plain number, not
-      // guaranteed to be a member of that enum.
-      if (status === 404 && message === `MediaRoom ${roomId} not found`) {
+      // Session points somewhere this room's MediaRoom no longer exists
+      // (issue #34) - keyed on the error code, not message text, since
+      // apps/sfu returns 404 for other things too (missing peer/producer/etc).
+      if (body.errorCode === MEDIA_ROOM_ERROR_CODE.MEDIA_ROOM_NOT_FOUND) {
         this.sfuFailureEmitter.emit(SFU_FAILURE_EVENT, {
           roomId,
           reason: 'not-found',

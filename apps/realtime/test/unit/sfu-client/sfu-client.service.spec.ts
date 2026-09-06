@@ -266,13 +266,14 @@ describe('SfuClientService', () => {
       expect(sessionsService.invalidate).not.toHaveBeenCalled();
     });
 
-    it('emits a not-found sfu failure when the 404 is this room MediaRoom missing (issue #34)', async () => {
+    it('emits a not-found sfu failure when the 404 carries the MediaRoom-not-found error code (issue #34)', async () => {
       httpService.put.mockReturnValue(
         throwError(() =>
           axiosErrorWithResponse(404, {
             statusCode: 404,
             message: 'MediaRoom room-1 not found',
             error: 'Not Found',
+            errorCode: 'MEDIA_ROOM_NOT_FOUND',
           }),
         ),
       );
@@ -295,6 +296,26 @@ describe('SfuClientService', () => {
           axiosErrorWithResponse(404, {
             statusCode: 404,
             message: 'Peer peer-1 not found in room room-1',
+            error: 'Not Found',
+          }),
+        ),
+      );
+      const failureListener = jest.fn();
+      sfuFailureEmitter.on('failure', failureListener);
+
+      await expect(
+        service.createOrGetMediaRoom(instanceUrl, 'room-1'),
+      ).rejects.toThrow(HttpException);
+
+      expect(failureListener).not.toHaveBeenCalled();
+    });
+
+    it('does not emit a sfu failure from message text alone, without the error code', async () => {
+      httpService.put.mockReturnValue(
+        throwError(() =>
+          axiosErrorWithResponse(404, {
+            statusCode: 404,
+            message: 'MediaRoom room-1 not found',
             error: 'Not Found',
           }),
         ),

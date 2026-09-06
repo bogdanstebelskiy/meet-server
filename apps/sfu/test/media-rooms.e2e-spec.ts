@@ -258,6 +258,7 @@ describe('MediaRooms (e2e)', () => {
         statusCode: 404,
         message: expect.stringContaining('no-such-room'),
         error: 'Not Found',
+        errorCode: 'MEDIA_ROOM_NOT_FOUND',
       });
     });
 

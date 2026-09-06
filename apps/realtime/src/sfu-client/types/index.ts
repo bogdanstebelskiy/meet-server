@@ -1,6 +1,9 @@
+import type { MediaRoomErrorCode } from '@app/media-contracts';
+
 export interface HttpExceptionBody {
   statusCode?: number;
   message?: string;
+  errorCode?: MediaRoomErrorCode;
 }
 
 // Issue #34: the two failure shapes request() distinguishes when deciding

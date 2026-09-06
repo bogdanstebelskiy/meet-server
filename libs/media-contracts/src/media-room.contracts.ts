@@ -80,3 +80,17 @@ export interface RemovePeerResponse {
 export interface CloseRoomResponse {
   closed: boolean;
 }
+
+// Lets callers match on a stable code instead of message text (issue #34).
+export const MEDIA_ROOM_ERROR_CODE = {
+  MEDIA_ROOM_NOT_FOUND: 'MEDIA_ROOM_NOT_FOUND',
+} as const;
+
+export type MediaRoomErrorCode =
+  (typeof MEDIA_ROOM_ERROR_CODE)[keyof typeof MEDIA_ROOM_ERROR_CODE];
+
+export interface MediaRoomErrorBody {
+  statusCode: number;
+  message: string;
+  errorCode?: MediaRoomErrorCode;
+}

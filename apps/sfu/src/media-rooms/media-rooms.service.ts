@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   DtlsParameters,
   MediaKind,
@@ -7,7 +7,10 @@ import type {
   WebRtcTransport,
   Worker,
 } from 'mediasoup/types';
-import { TRANSPORT_DIRECTIONS } from '@app/media-contracts';
+import {
+  MEDIA_ROOM_ERROR_CODE,
+  TRANSPORT_DIRECTIONS,
+} from '@app/media-contracts';
 import type { TransportDirection } from '@app/media-contracts';
 import { WorkerPoolService } from '../workers/worker-pool.service';
 import { WebRtcConfigService } from '../config/webrtc-config.service';
@@ -78,7 +81,12 @@ export class MediaRoomsService {
     const room = this.rooms.get(roomId);
 
     if (!room) {
-      throw new NotFoundException(`MediaRoom ${roomId} not found`);
+      throw new NotFoundException({
+        statusCode: HttpStatus.NOT_FOUND,
+        message: `MediaRoom ${roomId} not found`,
+        error: 'Not Found',
+        errorCode: MEDIA_ROOM_ERROR_CODE.MEDIA_ROOM_NOT_FOUND,
+      });
     }
 
     room.touch();

@@ -135,6 +135,18 @@ describe('MediaRoomsService', () => {
       expect(() => service.getRoom('missing')).toThrow(NotFoundException);
     });
 
+    it('carries the structured MediaRoom-not-found error code, not just message text (issue #34 recovery detection)', () => {
+      try {
+        service.getRoom('missing');
+        fail('expected getRoom to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(NotFoundException);
+        expect((error as NotFoundException).getResponse()).toMatchObject({
+          errorCode: 'MEDIA_ROOM_NOT_FOUND',
+        });
+      }
+    });
+
     it('throws NotFoundException for an unknown peer in a known room', async () => {
       stubWorkerCreatingRouter();
       await service.getOrCreateRoom('room-1');
