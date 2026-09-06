@@ -6,6 +6,7 @@ export const MEDIA_ROOMS_BASE_PATH = 'media-rooms';
 
 // Patterns are relative to MEDIA_ROOMS_BASE_PATH.
 export const MEDIA_ROOM_ROUTES = {
+  stats: 'stats',
   createOrGetRoom: ':roomId',
   createTransport: ':roomId/peers/:peerId/transports',
   connectTransport: ':roomId/peers/:peerId/transports/:transportId/connect',

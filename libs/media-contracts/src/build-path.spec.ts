@@ -17,9 +17,7 @@ describe('buildPath', () => {
       transportId: 'transport-1',
     });
 
-    expect(path).toBe(
-      'room-1/peers/peer-1/transports/transport-1/produce',
-    );
+    expect(path).toBe('room-1/peers/peer-1/transports/transport-1/produce');
   });
 });
 

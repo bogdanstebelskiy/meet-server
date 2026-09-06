@@ -20,6 +20,10 @@ export interface MediaRoomResponse {
   rtpCapabilities: RtpCapabilities;
 }
 
+export interface MediaRoomsStatsResponse {
+  roomCount: number;
+}
+
 export interface CreateTransportRequest {
   direction: TransportDirection;
 }
