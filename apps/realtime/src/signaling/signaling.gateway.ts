@@ -1,4 +1,4 @@
-import { UseFilters } from '@nestjs/common';
+import { Logger, UseFilters } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -12,6 +12,7 @@ import { SignalingService } from './signaling.service';
 import { RequireSocketContext } from './decorators/socket-context.decorator';
 import { WsExceptionFilter } from '../common/ws-exception.filter';
 import { BroadcastService } from '../broadcast/broadcast.service';
+import { PEER_LIVENESS_REFRESH_INTERVAL_MS } from './constants';
 import type {
   ConnectTransportPayload,
   ConsumePayload,
@@ -26,6 +27,8 @@ import type { SignalingSocket, SocketContext } from './types';
 @WebSocketGateway({ cors: true, transports: ['websocket'] })
 @UseFilters(new WsExceptionFilter())
 export class SignalingGateway implements OnGatewayDisconnect, OnGatewayInit {
+  private readonly logger = new Logger(SignalingGateway.name);
+
   constructor(
     private readonly signalingService: SignalingService,
     private readonly broadcastService: BroadcastService,
@@ -50,6 +53,23 @@ export class SignalingGateway implements OnGatewayDisconnect, OnGatewayInit {
     client.data.roomId = roomId;
     client.data.peerId = peerId;
     await client.join(roomId);
+
+    // Ties this peer's liveness (issue #31) to its owning instance's process
+    // actually being alive, not to any client cooperation - the interval
+    // simply stops firing if this instance crashes, letting the Redis key
+    // expire on its own. Replaces the removed sessionHeartbeat client event
+    // (issue #34), which this liveness refresh depended on before that event
+    // was dropped for Session's own now-unrelated reasons.
+    client.data.livenessIntervalId = setInterval(() => {
+      this.signalingService
+        .touchPeerLiveness(roomId, peerId)
+        .catch((error) =>
+          this.logger.error(
+            `Failed to refresh liveness for peer ${peerId} in room ${roomId}`,
+            error,
+          ),
+        );
+    }, PEER_LIVENESS_REFRESH_INTERVAL_MS);
 
     client
       .to(roomId)
@@ -166,6 +186,8 @@ export class SignalingGateway implements OnGatewayDisconnect, OnGatewayInit {
   }
 
   async handleDisconnect(client: SignalingSocket) {
+    clearInterval(client.data.livenessIntervalId);
+
     const { roomId, peerId } = client.data;
 
     if (!roomId || !peerId) {

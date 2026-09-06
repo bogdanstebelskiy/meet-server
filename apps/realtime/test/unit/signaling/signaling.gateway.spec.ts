@@ -31,6 +31,7 @@ describe('SignalingGateway', () => {
       consume: jest.fn(),
       resumeConsumer: jest.fn(),
       leave: jest.fn(),
+      touchPeerLiveness: jest.fn().mockResolvedValue(undefined),
     };
 
     broadcastService = {
@@ -129,6 +130,39 @@ describe('SignalingGateway', () => {
       await gateway.join(client, { roomId: 'room-1', displayName: 'Alice' });
 
       expect(client.emit).not.toHaveBeenCalled();
+    });
+
+    it('starts a liveness-refresh interval that touches this peer on each tick', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const client = createFakeClient();
+        const peer = { id: 'socket-1', displayName: 'Alice' };
+        signalingService.join.mockResolvedValue({
+          peer,
+          existingPeers: [],
+          existingProducers: [],
+        });
+
+        await gateway.join(client, { roomId: 'room-1', displayName: 'Alice' });
+
+        expect(signalingService.touchPeerLiveness).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(10_000);
+        await Promise.resolve();
+
+        expect(signalingService.touchPeerLiveness).toHaveBeenCalledWith(
+          'room-1',
+          'socket-1',
+        );
+
+        jest.advanceTimersByTime(10_000);
+        await Promise.resolve();
+
+        expect(signalingService.touchPeerLiveness).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -251,6 +285,29 @@ describe('SignalingGateway', () => {
       expect(client._emit).toHaveBeenCalledWith('peerClosed', {
         peerId: 'socket-1',
       });
+    });
+
+    it('stops the liveness-refresh interval so it never fires after disconnect', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const client = createFakeClient();
+        signalingService.join.mockResolvedValue({
+          peer: { id: 'socket-1', displayName: 'Alice' },
+          existingPeers: [],
+          existingProducers: [],
+        });
+
+        await gateway.join(client, { roomId: 'room-1', displayName: 'Alice' });
+        await gateway.handleDisconnect(client);
+
+        jest.advanceTimersByTime(60_000);
+        await Promise.resolve();
+
+        expect(signalingService.touchPeerLiveness).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

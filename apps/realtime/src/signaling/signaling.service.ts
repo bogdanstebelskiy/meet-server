@@ -66,6 +66,10 @@ export class SignalingService {
     }
   }
 
+  async touchPeerLiveness(roomId: string, peerId: string): Promise<void> {
+    await this.roomsService.touchPeerLiveness(roomId, peerId);
+  }
+
   async getRoom(roomId: string) {
     const room = await this.roomsService.getRoom(roomId);
 
@@ -245,7 +249,7 @@ export class SignalingService {
     }
 
     // The room is gone - drop its session mapping now instead of waiting out
-    // its TTL, and forget the touch() debounce timer with it.
+    // its TTL.
     await this.sessionsService.invalidate(roomId);
 
     this.chatService

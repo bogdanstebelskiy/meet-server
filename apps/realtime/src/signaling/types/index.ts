@@ -8,7 +8,9 @@ export interface SocketContext {
   peerId: string;
 }
 
-export type SignalingSocketData = Partial<SocketContext>;
+export interface SignalingSocketData extends Partial<SocketContext> {
+  livenessIntervalId?: NodeJS.Timeout;
+}
 
 export type SignalingSocket = Socket<
   DefaultEventsMap,

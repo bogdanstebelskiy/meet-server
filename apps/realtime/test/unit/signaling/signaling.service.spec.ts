@@ -20,6 +20,7 @@ describe('SignalingService', () => {
     closeRoom: jest.Mock;
     addProducer: jest.Mock;
     getProducers: jest.Mock;
+    touchPeerLiveness: jest.Mock;
   };
   let sfuClient: {
     createTransport: jest.Mock;
@@ -55,6 +56,7 @@ describe('SignalingService', () => {
       closeRoom: jest.fn().mockResolvedValue(true),
       addProducer: jest.fn().mockResolvedValue(undefined),
       getProducers: jest.fn().mockResolvedValue([]),
+      touchPeerLiveness: jest.fn().mockResolvedValue(undefined),
     };
 
     sfuClient = {
@@ -515,6 +517,17 @@ describe('SignalingService', () => {
       // Flush the fire-and-forget .catch() handlers before the test ends.
       await Promise.resolve();
       await Promise.resolve();
+    });
+  });
+
+  describe('touchPeerLiveness', () => {
+    it('passes through to RoomsService.touchPeerLiveness', async () => {
+      await service.touchPeerLiveness('room-1', 'peer-1');
+
+      expect(roomsService.touchPeerLiveness).toHaveBeenCalledWith(
+        'room-1',
+        'peer-1',
+      );
     });
   });
 });
