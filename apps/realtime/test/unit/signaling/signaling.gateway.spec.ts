@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SignalingGateway } from '../../../src/signaling/signaling.gateway';
 import { SignalingService } from '../../../src/signaling/signaling.service';
+import { BroadcastService } from '../../../src/broadcast/broadcast.service';
 
 describe('SignalingGateway', () => {
   let gateway: SignalingGateway;
   let signalingService: Record<string, jest.Mock>;
+  let broadcastService: { setServer: jest.Mock };
 
   const createFakeClient = (data: Record<string, unknown> = {}) => {
     const emit = jest.fn();
@@ -31,14 +33,29 @@ describe('SignalingGateway', () => {
       leave: jest.fn(),
     };
 
+    broadcastService = {
+      setServer: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SignalingGateway,
         { provide: SignalingService, useValue: signalingService },
+        { provide: BroadcastService, useValue: broadcastService },
       ],
     }).compile();
 
     gateway = module.get<SignalingGateway>(SignalingGateway);
+  });
+
+  describe('afterInit', () => {
+    it('hands the socket.io server over to BroadcastService', () => {
+      const server = {} as any;
+
+      gateway.afterInit(server);
+
+      expect(broadcastService.setServer).toHaveBeenCalledWith(server);
+    });
   });
 
   describe('join', () => {

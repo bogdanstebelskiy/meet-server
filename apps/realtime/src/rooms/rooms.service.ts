@@ -33,6 +33,9 @@ export class RoomsService {
       // two different lifetimes.
       const roomKey = this.roomKey(roomId);
       await this.redis.expire(roomKey, ROOM_TTL_SECONDS);
+      // Session shares this same refresh trigger and TTL (issue #34), so it
+      // can never drift out of sync with the room it points at.
+      await this.sessionsService.touch(roomId);
       return existing;
     }
 
@@ -166,6 +169,20 @@ export class RoomsService {
     await Promise.all(deleteProducerPromises);
 
     return true;
+  }
+
+  // Used by recovery (issue #34) after a room's MediaRoom is recreated on
+  // its sfu instance - old producer ids are gone with it, but membership
+  // itself is untouched, since nobody actually left.
+  async resetAllProducers(roomId: string): Promise<void> {
+    const peersKey = this.peersKey(roomId);
+    const peerIds = await this.redis.hkeys(peersKey);
+
+    const deleteProducerPromises = peerIds.map((peerId) => {
+      const producersKey = this.producersKey(roomId, peerId);
+      return this.redis.del(producersKey);
+    });
+    await Promise.all(deleteProducerPromises);
   }
 
   async addProducer(

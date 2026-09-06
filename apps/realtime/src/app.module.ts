@@ -6,6 +6,7 @@ import { RoomsModule } from './rooms/rooms.module';
 import { SignalingModule } from './signaling/signaling.module';
 import { ChatModule } from './chat/chat.module';
 import { ChatGateway } from './chat/chat.gateway';
+import { RecoveryModule } from './recovery/recovery.module';
 
 @Module({
   imports: [
@@ -13,6 +14,9 @@ import { ChatGateway } from './chat/chat.gateway';
     RoomsModule,
     SignalingModule,
     ChatModule,
+    // Not injected anywhere directly - imported so Nest instantiates it and
+    // its onModuleInit sfu-failure subscription (issue #34) actually runs.
+    RecoveryModule,
   ],
   controllers: [AppController],
   providers: [AppService, ChatGateway],

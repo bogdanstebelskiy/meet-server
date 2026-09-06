@@ -11,7 +11,7 @@ describe('RoomsService', () => {
   let service: RoomsService;
   let redis: FakeRedis;
   let sfuClient: { createOrGetMediaRoom: jest.Mock };
-  let sessionsService: { assign: jest.Mock };
+  let sessionsService: { assign: jest.Mock; touch: jest.Mock };
 
   beforeEach(async () => {
     redis = new FakeRedis();
@@ -20,6 +20,7 @@ describe('RoomsService', () => {
     };
     sessionsService = {
       assign: jest.fn().mockResolvedValue(instanceUrl),
+      touch: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -98,6 +99,19 @@ describe('RoomsService', () => {
       await service.getOrCreateRoom('room-1');
 
       expect(expireSpy).toHaveBeenCalledWith('room:room-1', 60 * 60 * 24);
+    });
+
+    it('touches the session on every call to an existing room, sharing Room TTL/refresh (issue #34)', async () => {
+      sfuClient.createOrGetMediaRoom.mockResolvedValue({
+        roomId: 'room-1',
+        rtpCapabilities: {},
+      });
+
+      await service.getOrCreateRoom('room-1');
+      sessionsService.touch.mockClear();
+      await service.getOrCreateRoom('room-1');
+
+      expect(sessionsService.touch).toHaveBeenCalledWith('room-1');
     });
 
     it('dedupes concurrent creation for the same brand-new room (no lost peer state)', async () => {
@@ -305,6 +319,34 @@ describe('RoomsService', () => {
       await service.getOrCreateRoom('room-1');
 
       expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('resetAllProducers (issue #34 recovery)', () => {
+    it('deletes every present peer producers hash, leaving the peers hash untouched', async () => {
+      await service.addPeer('room-1', { id: 'peer-1', displayName: 'Alice' });
+      await service.addPeer('room-1', { id: 'peer-2', displayName: 'Bob' });
+      await service.addProducer('room-1', 'peer-1', 'prod-1', 'audio');
+      await service.addProducer('room-1', 'peer-2', 'prod-2', 'video');
+
+      await service.resetAllProducers('room-1');
+
+      expect(await service.getProducers('room-1', 'peer-1')).toEqual([]);
+      expect(await service.getProducers('room-1', 'peer-2')).toEqual([]);
+      expect(await service.getPeer('room-1', 'peer-1')).toEqual({
+        id: 'peer-1',
+        displayName: 'Alice',
+      });
+      expect(await service.getPeer('room-1', 'peer-2')).toEqual({
+        id: 'peer-2',
+        displayName: 'Bob',
+      });
+    });
+
+    it('is a no-op for a room with no peers', async () => {
+      await expect(
+        service.resetAllProducers('missing-room'),
+      ).resolves.not.toThrow();
     });
   });
 

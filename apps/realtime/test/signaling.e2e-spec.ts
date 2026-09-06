@@ -577,35 +577,187 @@ describe('Signaling (e2e)', () => {
       expect(await redis.get(`session:${roomId}`)).toBe(sfuServiceUrl);
     });
 
-    it('sessionHeartbeat acks and refreshes the session TTL', async () => {
-      const roomId = 'heartbeat-room';
+    it('a session TTL matches Room TTL and is refreshed by a second join, not a dedicated heartbeat (issue #34)', async () => {
+      const roomId = 'session-ttl-room';
       const alice = await connectClient();
       await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
 
-      const ack = await emitAsync(alice, 'sessionHeartbeat');
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      const ttlAfterFirstJoin = await redis.ttl(`session:${roomId}`);
+      expect(ttlAfterFirstJoin).toBeGreaterThan(0);
+      expect(ttlAfterFirstJoin).toBeLessThanOrEqual(60 * 60 * 24);
 
-      expect(ack).toEqual({ ok: true });
+      const bob = await connectClient();
+      await emitAsync(bob, 'join', { roomId, displayName: 'Bob' });
+
+      const ttlAfterSecondJoin = await redis.ttl(`session:${roomId}`);
+      expect(ttlAfterSecondJoin).toBeGreaterThan(0);
+    });
+  });
+
+  describe('recovery (issue #34)', () => {
+    // Simulates apps/sfu losing a room's state (e.g. a restart) without
+    // actually restarting the process - same observable effect (the next
+    // call 404s "MediaRoom ... not found") as the real failure this recovers.
+    function forgetSfuMediaRoom(roomId: string): void {
+      const mediaRoomsService = sfuApp.get(MediaRoomsService);
+      (
+        mediaRoomsService as unknown as { rooms: Map<string, unknown> }
+      ).rooms.delete(roomId);
+    }
+
+    it('recreates the MediaRoom and lets the next call succeed after a 404 (pinned instance reached, room gone)', async () => {
+      const roomId = 'recovery-404-room';
+      const alice = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+      await emitAsync(alice, 'createWebRtcTransport', { direction: 'send' });
+
+      forgetSfuMediaRoom(roomId);
+
+      const failingCall = await observeOutcome(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
+      expect(failingCall.ack).toBe('ACK_NOT_CALLED');
+      expect(failingCall.exception).toMatchObject({
+        status: 'error',
+        message: `MediaRoom ${roomId} not found`,
+      });
+
+      // Recovery runs in the background off the failed call above - give it
+      // a moment before checking the next call succeeds.
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const redis = app.get<Redis>(REDIS_CLIENT);
-      const ttl = await redis.ttl(`session:${roomId}`);
-      expect(ttl).toBeGreaterThan(0);
+      expect(await redis.get(`session:${roomId}`)).toBe(sfuServiceUrl);
+
+      const retriedTransport = await emitAsync(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
+      expect(retriedTransport).toMatchObject({ id: expect.any(String) });
     });
 
-    it('sessionHeartbeat before joining never acks, only surfaces via the exception event', async () => {
-      const client = await connectClient();
+    it('broadcasts roomRecovered to every socket in the room, not just the one whose call triggered detection', async () => {
+      const roomId = 'recovery-broadcast-room';
+      const alice = await connectClient();
+      const bob = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+      await emitAsync(bob, 'join', { roomId, displayName: 'Bob' });
+      await emitAsync(alice, 'createWebRtcTransport', { direction: 'send' });
 
-      const { ack, exception } = await observeOutcome(
-        client,
-        'sessionHeartbeat',
-        undefined,
+      forgetSfuMediaRoom(roomId);
+
+      const aliceRecovered = waitForEvent(alice, 'roomRecovered');
+      const bobRecovered = waitForEvent(bob, 'roomRecovered');
+
+      // This call fails (the room it was pinned to is gone) - it only ever
+      // surfaces via the exception event, so don't await its never-firing ack.
+      await observeOutcome(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
+
+      await expect(aliceRecovered).resolves.toEqual({ roomId });
+      await expect(bobRecovered).resolves.toEqual({ roomId });
+    });
+
+    it('reassigns the session and recreates the MediaRoom after the pinned instance becomes unreachable', async () => {
+      const roomId = 'recovery-unreachable-room';
+      const alice = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      // Point this room's session at a port nothing is listening on.
+      await redis.set(
+        `session:${roomId}`,
+        'http://127.0.0.1:1',
+        'EX',
+        60 * 60 * 24,
       );
 
-      expect(ack).toBe('ACK_NOT_CALLED');
-      expect(exception).toMatchObject({
-        status: 'error',
-        message: 'Socket has not joined a room yet',
-        cause: { pattern: 'sessionHeartbeat' },
+      const failingCall = await observeOutcome(alice, 'createWebRtcTransport', {
+        direction: 'send',
       });
+      expect(failingCall.ack).toBe('ACK_NOT_CALLED');
+      expect(failingCall.exception).toMatchObject({
+        status: 'error',
+        message: expect.stringContaining('unreachable'),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(await redis.get(`session:${roomId}`)).toBe(sfuServiceUrl);
+
+      const retriedTransport = await emitAsync(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
+      expect(retriedTransport).toMatchObject({ id: expect.any(String) });
+    });
+
+    it('resets producer records but leaves room membership untouched', async () => {
+      const roomId = 'recovery-membership-room';
+      const alice = await connectClient();
+      const bob = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+      await emitAsync(bob, 'join', { roomId, displayName: 'Bob' });
+
+      const aliceSendTransport = await emitAsync(
+        alice,
+        'createWebRtcTransport',
+        { direction: 'send' },
+      );
+      await emitAsync(alice, 'connectWebRtcTransport', {
+        transportId: aliceSendTransport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
+      const rtpCapabilities = await emitAsync(
+        alice,
+        'getRouterRtpCapabilities',
+      );
+      await emitAsync(alice, 'produce', {
+        transportId: aliceSendTransport.id,
+        kind: 'audio',
+        rtpParameters: audioProducerRtpParameters(rtpCapabilities, 55501),
+      });
+
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      const producersKeyBefore = await redis.hlen(
+        `peer:${roomId}:${alice.id}:producers`,
+      );
+      expect(producersKeyBefore).toBeGreaterThan(0);
+
+      forgetSfuMediaRoom(roomId);
+      await observeOutcome(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(await redis.hlen(`room:${roomId}:peers`)).toBe(2);
+      expect(await redis.hlen(`peer:${roomId}:${alice.id}:producers`)).toBe(0);
+    });
+
+    it('does not double-run recovery for concurrent failures from different peers around the same incident', async () => {
+      const roomId = 'recovery-dedup-room';
+      const alice = await connectClient();
+      const bob = await connectClient();
+      await emitAsync(alice, 'join', { roomId, displayName: 'Alice' });
+      await emitAsync(bob, 'join', { roomId, displayName: 'Bob' });
+      await emitAsync(alice, 'createWebRtcTransport', { direction: 'send' });
+
+      forgetSfuMediaRoom(roomId);
+
+      let aliceRecoveredCount = 0;
+      let bobRecoveredCount = 0;
+      alice.on('roomRecovered', () => aliceRecoveredCount++);
+      bob.on('roomRecovered', () => bobRecoveredCount++);
+
+      await Promise.all([
+        observeOutcome(alice, 'createWebRtcTransport', { direction: 'send' }),
+        observeOutcome(bob, 'createWebRtcTransport', { direction: 'send' }),
+      ]);
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(aliceRecoveredCount).toBe(1);
+      expect(bobRecoveredCount).toBe(1);
     });
   });
 

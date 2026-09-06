@@ -23,6 +23,8 @@ import type {
   RtpParameters,
 } from 'mediasoup/types';
 import { SessionsService } from '../sessions/sessions.service';
+import { SfuFailureEmitter } from './sfu-failure.emitter';
+import { SFU_FAILURE_EVENT } from './constants';
 import type { HttpExceptionBody } from './types';
 
 @Injectable()
@@ -32,6 +34,7 @@ export class SfuClientService {
   constructor(
     private readonly httpService: HttpService,
     private readonly sessionsService: SessionsService,
+    private readonly sfuFailureEmitter: SfuFailureEmitter,
   ) {}
 
   createOrGetMediaRoom(
@@ -234,6 +237,11 @@ export class SfuClientService {
           );
         }
 
+        this.sfuFailureEmitter.emit(SFU_FAILURE_EVENT, {
+          roomId,
+          reason: 'unreachable',
+        });
+
         throw new HttpException(
           `apps/sfu is unreachable: ${error.message}`,
           HttpStatus.SERVICE_UNAVAILABLE,
@@ -241,11 +249,22 @@ export class SfuClientService {
       }
 
       const body = error.response.data as HttpExceptionBody;
+      const status = body.statusCode ?? error.response.status;
+      const message = body.message ?? error.message;
 
-      throw new HttpException(
-        body.message ?? error.message,
-        body.statusCode ?? error.response.status,
-      );
+      // Same underlying problem as the instance being unreachable - Session
+      // points somewhere this room's MediaRoom no longer exists (e.g. after
+      // an sfu restart) - issue #34. Compared against the raw 404 (not
+      // HttpStatus.NOT_FOUND) since status here is a plain number, not
+      // guaranteed to be a member of that enum.
+      if (status === 404 && message === `MediaRoom ${roomId} not found`) {
+        this.sfuFailureEmitter.emit(SFU_FAILURE_EVENT, {
+          roomId,
+          reason: 'not-found',
+        });
+      }
+
+      throw new HttpException(message, status);
     }
   }
 }
