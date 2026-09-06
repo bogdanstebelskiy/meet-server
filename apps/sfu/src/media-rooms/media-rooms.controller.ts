@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Param,
   Post,
@@ -17,6 +18,7 @@ import type {
   CreateTransportRequest,
   CreateTransportResponse,
   MediaRoomResponse,
+  MediaRoomsStatsResponse,
   PauseProducerResponse,
   ProduceRequest,
   ProduceResponse,
@@ -29,6 +31,11 @@ import { MediaRoomsService } from './media-rooms.service';
 @Controller(MEDIA_ROOMS_BASE_PATH)
 export class MediaRoomsController {
   constructor(private readonly mediaRoomsService: MediaRoomsService) {}
+
+  @Get(MEDIA_ROOM_ROUTES.stats)
+  stats(): MediaRoomsStatsResponse {
+    return { roomCount: this.mediaRoomsService.roomCount };
+  }
 
   @Put(MEDIA_ROOM_ROUTES.createOrGetRoom)
   async createOrGetRoom(

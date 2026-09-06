@@ -145,6 +145,25 @@ describe('MediaRoomsService', () => {
     });
   });
 
+  describe('roomCount', () => {
+    it('reports zero with no rooms created', () => {
+      expect(service.roomCount).toBe(0);
+    });
+
+    it('reports the number of rooms currently held, dropping closed ones', async () => {
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-1');
+      stubWorkerCreatingRouter();
+      await service.getOrCreateRoom('room-2');
+
+      expect(service.roomCount).toBe(2);
+
+      service.closeRoom('room-1');
+
+      expect(service.roomCount).toBe(1);
+    });
+  });
+
   describe('createTransport', () => {
     it('creates and assigns sendTransport for direction "send", lazily creating the peer', async () => {
       stubWorkerCreatingRouter();

@@ -73,6 +73,10 @@ export class MediaRoomsService {
     }
   }
 
+  get roomCount(): number {
+    return this.rooms.size;
+  }
+
   getRoom(roomId: string): MediaRoom {
     const room = this.rooms.get(roomId);
 
