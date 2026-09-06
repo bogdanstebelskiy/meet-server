@@ -79,9 +79,9 @@ describe('Cross-instance realtime scaling (e2e)', () => {
     sfuApp = sfuModuleFixture.createNestApplication();
     const sfuServiceUrl = await listenOnEphemeralPort(sfuApp);
 
-    // Read by apps/realtime's SfuClientModule when each AppModule below
+    // Read by apps/realtime's SfuConfigService when each AppModule below
     // compiles - must be set first, shared by both instances.
-    process.env.SFU_SERVICE_URL = sfuServiceUrl;
+    process.env.SFU_SERVICE_URLS = sfuServiceUrl;
 
     // The default in-memory socket.io adapter can't cross-broadcast between
     // two separate Nest apps - wire the same redis-adapter main.ts uses.
@@ -132,7 +132,7 @@ describe('Cross-instance realtime scaling (e2e)', () => {
     await (adapterA as unknown as { subClient: Redis }).subClient.quit();
     await (adapterB as unknown as { subClient: Redis }).subClient.quit();
 
-    delete process.env.SFU_SERVICE_URL;
+    delete process.env.SFU_SERVICE_URLS;
   });
 
   afterEach(async () => {

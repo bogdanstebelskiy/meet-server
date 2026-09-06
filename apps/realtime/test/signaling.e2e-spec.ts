@@ -75,9 +75,9 @@ describe('Signaling (e2e)', () => {
     sfuApp = sfuModuleFixture.createNestApplication();
     const sfuServiceUrl = await listenOnEphemeralPort(sfuApp);
 
-    // Read by apps/realtime's SfuClientModule (HttpModule.registerAsync)
-    // when AppModule below is compiled - must be set first.
-    process.env.SFU_SERVICE_URL = sfuServiceUrl;
+    // Read by apps/realtime's SfuConfigService via ConfigModule when
+    // AppModule below is compiled - must be set first.
+    process.env.SFU_SERVICE_URLS = sfuServiceUrl;
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -98,7 +98,7 @@ describe('Signaling (e2e)', () => {
     const redis = app.get<Redis>(REDIS_CLIENT);
     await redis.quit();
 
-    delete process.env.SFU_SERVICE_URL;
+    delete process.env.SFU_SERVICE_URLS;
   });
 
   afterEach(async () => {
