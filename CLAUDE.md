@@ -31,10 +31,12 @@ Unit and e2e tests use separate Jest configs (root `package.json` vs each app's 
 
 ```bash
 PORT=3002 npx nest start sfu --watch                              # apps/sfu
-SFU_SERVICE_URL=http://localhost:3002 npm run start:dev           # apps/realtime
+SFU_SERVICE_URLS=http://localhost:3002 npm run start:dev          # apps/realtime
 ```
 
-Both apps default to port 3000 (`process.env.PORT ?? 3000` in each `main.ts`) if `PORT` is unset, so starting both without setting it crashes the second one with `EADDRINUSE`. `SFU_SERVICE_URL` itself defaults to `http://localhost:3001` when unset — pick whatever port is actually free on your machine and set both `PORT` (for `apps/sfu`) and `SFU_SERVICE_URL` (for `apps/realtime`) to match; don't rely on the 3001 default colliding silently with something else already running there (a "socket hang up"/connection-reset error instead of a clean "connection refused" is the symptom of exactly that).
+Both apps default to port 3000 (`process.env.PORT ?? 3000` in each `main.ts`) if `PORT` is unset, so starting both without setting it crashes the second one with `EADDRINUSE`. `SFU_SERVICE_URLS` itself defaults to `http://localhost:3001` when unset — pick whatever port is actually free on your machine and set both `PORT` (for `apps/sfu`) and `SFU_SERVICE_URLS` (for `apps/realtime`) to match; don't rely on the 3001 default colliding silently with something else already running there (a "socket hang up"/connection-reset error instead of a clean "connection refused" is the symptom of exactly that).
+
+`SFU_SERVICE_URLS` takes a comma-separated list (`http://localhost:3002,http://localhost:3003`) to run several `apps/sfu` instances behind one `apps/realtime` — each room is pinned once, at creation, to whichever configured instance currently reports the fewest rooms (`SfuRegistryService`, `apps/realtime/src/sfu-client/sfu-registry.service.ts`). A single value keeps today's one-instance behavior.
 
 ### Docker
 
@@ -45,10 +47,10 @@ docker build -f apps/realtime/Dockerfile -t meet-realtime .
 docker build -f apps/sfu/Dockerfile -t meet-sfu .
 
 docker run -p 3001:3000 --name sfu meet-sfu
-docker run -p 3000:3000 -e REDIS_URL=redis://<host>:6379 -e SFU_SERVICE_URL=http://<sfu-host>:3001 meet-realtime
+docker run -p 3000:3000 -e REDIS_URL=redis://<host>:6379 -e SFU_SERVICE_URLS=http://<sfu-host>:3001 meet-realtime
 ```
 
-`apps/realtime` needs `SFU_SERVICE_URL` pointed at a reachable `apps/sfu` instance for anything past a bare WS connection (`join`, `produce`, `consume`, etc. all call out to it) — it defaults to `http://localhost:3001` when unset, which only works if both apps happen to run on the same host. It also still needs a reachable Redis at `REDIS_URL` for chat history; without one it still boots and serves HTTP, but logs `ioredis` connection errors in the background.
+`apps/realtime` needs `SFU_SERVICE_URLS` pointed at reachable `apps/sfu` instance(s) for anything past a bare WS connection (`join`, `produce`, `consume`, etc. all call out to it) — it defaults to `http://localhost:3001` when unset, which only works if both apps happen to run on the same host. It also still needs a reachable Redis at `REDIS_URL` for chat history; without one it still boots and serves HTTP, but logs `ioredis` connection errors in the background.
 
 ## Code style
 
