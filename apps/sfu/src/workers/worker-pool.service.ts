@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { createWorker } from 'mediasoup';
 import type { Worker } from 'mediasoup/types';
 import { WorkerSettingsConfigService } from '../config/worker-settings-config.service';
@@ -14,9 +9,7 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   private workers: Worker[] = [];
   private routersPerWorker = new Map<Worker, number>();
 
-  constructor(
-    private readonly workerSettingsConfig: WorkerSettingsConfigService,
-  ) {}
+  constructor(private readonly workerSettingsConfig: WorkerSettingsConfigService) {}
 
   async onModuleInit() {
     const numWorkers = this.workerSettingsConfig.numWorkers;
@@ -37,15 +30,15 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Spawned ${numWorkers} mediasoup workers`);
   }
 
+  // close() only notifies the process, it doesn't wait for exit, so kill() enforces it.
+  // Each worker is torn down independently so one failure doesn't block the rest.
   onModuleDestroy() {
     this.workers.forEach((worker) => {
       try {
-        // close() only notifies the process, it doesn't wait for exit.
         worker.close();
         process.kill(worker.pid);
-      } catch {
-        // Worker's OS process may have already exited; nothing left to clean up,
-        // and one failure here must not stop the remaining workers from closing.
+      } catch (error) {
+        this.logger.warn(`Worker ${worker.pid} teardown error (likely already exited)`, error);
       }
     });
   }
@@ -54,9 +47,7 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   // the same pre-burst counts and pile onto one worker.
   reserveWorker(): Worker {
     if (this.workers.length === 0) {
-      throw new Error(
-        'No mediasoup workers available - onModuleInit has not run yet',
-      );
+      throw new Error('No mediasoup workers available - onModuleInit has not run yet');
     }
 
     let chosen = this.workers[0];
