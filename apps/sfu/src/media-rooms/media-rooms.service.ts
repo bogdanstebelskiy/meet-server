@@ -18,9 +18,6 @@ import { MediaPeer } from './entities/media-peer.entity';
 @Injectable()
 export class MediaRoomsService {
   private readonly rooms = new Map<string, MediaRoom>();
-  // Dedupes concurrent getOrCreateRoom calls for a new roomId, so two
-  // concurrent requests for a brand-new room don't each create their own
-  // router.
   private readonly pendingRooms = new Map<string, Promise<MediaRoom>>();
 
   constructor(
@@ -67,7 +64,6 @@ export class MediaRoomsService {
       const mediaCodecs = this.mediaCodecsConfig.codecs;
       return await worker.createRouter({ mediaCodecs });
     } catch (error) {
-      // createRouter never resolved - give back the slot reserveWorker took.
       this.workerPool.trackRouterClosed(worker);
       throw error;
     }
@@ -88,7 +84,8 @@ export class MediaRoomsService {
   }
 
   getPeer(roomId: string, peerId: string): MediaPeer {
-    const peer = this.getRoom(roomId).getPeer(peerId);
+    const room = this.getRoom(roomId);
+    const peer = room.getPeer(peerId);
 
     if (!peer) {
       throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
@@ -99,7 +96,7 @@ export class MediaRoomsService {
 
   async createTransport(roomId: string, peerId: string, direction: TransportDirection) {
     const room = this.getRoom(roomId);
-    const peerExisted = room.getPeer(peerId) !== undefined;
+    const peerExisted = room.hasPeer(peerId);
     const peer = room.getOrCreatePeer(peerId);
 
     let transport: WebRtcTransport;
@@ -108,26 +105,18 @@ export class MediaRoomsService {
       const transportOptions = this.webRtcConfig.webRtcTransportOptions;
       transport = await room.router.createWebRtcTransport(transportOptions);
     } catch (error) {
-      // A brand-new peer with nothing else on it yet must not linger forever
-      // and block the room from ever being seen as empty.
-      if (!peerExisted) {
-        room.removePeer(peerId);
-      }
-
+      this.discardPeerIfJustCreated(room, peerId, peerExisted);
       throw error;
     }
 
-    // A concurrent removePeer can delete this peer while the transport was
-    // being created - the transport must not attach to an orphaned peer no
-    // one holds a reference to.
-    if (room.getPeer(peerId) !== peer) {
+    const peerRemovedDuringCreation = room.getPeer(peerId) !== peer;
+
+    if (peerRemovedDuringCreation) {
       transport.close();
       throw new NotFoundException(`Peer ${peerId} not found in room ${roomId}`);
     }
 
     if (direction === TRANSPORT_DIRECTIONS.SEND) {
-      // A retried createTransport call (client timeout, reconnect) must not
-      // leak the previous transport's ports/producers.
       peer.sendTransport?.close();
       peer.sendTransport = transport;
     } else {
@@ -136,6 +125,14 @@ export class MediaRoomsService {
     }
 
     return transport;
+  }
+
+  private discardPeerIfJustCreated(room: MediaRoom, peerId: string, peerExisted: boolean): void {
+    if (peerExisted) {
+      return;
+    }
+
+    room.removePeer(peerId);
   }
 
   async connectTransport(
@@ -176,8 +173,9 @@ export class MediaRoomsService {
   ) {
     const room = this.getRoom(roomId);
     const peer = this.getPeer(roomId, peerId);
+    const canConsume = room.router.canConsume({ producerId, rtpCapabilities });
 
-    if (!room.router.canConsume({ producerId, rtpCapabilities })) {
+    if (!canConsume) {
       throw new NotFoundException(`Cannot consume producer ${producerId}`);
     }
 
@@ -199,9 +197,6 @@ export class MediaRoomsService {
     const peer = this.getPeer(roomId, peerId);
     const consumer = peer.consumers.get(consumerId);
 
-    // A consumer closes when its producer's peer is removed, but this peer's
-    // consumers map isn't told - so a stale id must 404 rather than throw
-    // mediasoup's closed-resource error.
     if (!consumer || consumer.closed) {
       throw new NotFoundException(`Consumer ${consumerId} not found for peer ${peerId}`);
     }
@@ -221,9 +216,6 @@ export class MediaRoomsService {
     await producer.resume();
   }
 
-  // A double-leave or a race against closeRoom can call this against an
-  // already-unknown room/peer - no-op rather than throw, matching
-  // apps/realtime's own mirrored RoomsService.removePeer.
   removePeer(roomId: string, peerId: string): void {
     const room = this.rooms.get(roomId);
 
@@ -234,9 +226,6 @@ export class MediaRoomsService {
     room.removePeer(peerId);
   }
 
-  // Mirrors apps/realtime's closeRoom: a no-op (but still reports success)
-  // if peers remain or the room is already gone, so a caller can call this
-  // unconditionally after removePeer without racing a concurrent join.
   closeRoom(roomId: string): boolean {
     const room = this.rooms.get(roomId);
 
@@ -259,9 +248,6 @@ export class MediaRoomsService {
     const peer = this.getPeer(roomId, peerId);
     const producer = peer.producers.get(producerId);
 
-    // A producer closes when its transport is replaced by a retry, but this
-    // peer's producers map isn't told - so a stale id must 404, not throw
-    // mediasoup's closed-resource error.
     if (!producer || producer.closed) {
       throw new NotFoundException(`Producer ${producerId} not found for peer ${peerId}`);
     }

@@ -14,7 +14,7 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const numWorkers = this.workerSettingsConfig.numWorkers;
 
-    for (let idx = 0; idx < numWorkers; ++idx) {
+    for (let i = 0; i < numWorkers; ++i) {
       const workerSettings = this.workerSettingsConfig.settings;
       const worker = await createWorker(workerSettings);
 
@@ -30,21 +30,17 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Spawned ${numWorkers} mediasoup workers`);
   }
 
-  // close() only notifies the process, it doesn't wait for exit, so kill() enforces it.
-  // Each worker is torn down independently so one failure doesn't block the rest.
   onModuleDestroy() {
-    this.workers.forEach((worker) => {
+    for (const worker of this.workers) {
       try {
         worker.close();
         process.kill(worker.pid);
       } catch (error) {
         this.logger.warn(`Worker ${worker.pid} teardown error (likely already exited)`, error);
       }
-    });
+    }
   }
 
-  // Reserves the slot synchronously so a concurrent burst can't all read
-  // the same pre-burst counts and pile onto one worker.
   reserveWorker(): Worker {
     if (this.workers.length === 0) {
       throw new Error('No mediasoup workers available - onModuleInit has not run yet');
@@ -68,12 +64,13 @@ export class WorkerPoolService implements OnModuleInit, OnModuleDestroy {
   }
 
   trackRouterClosed(worker: Worker): void {
-    const count = this.routersPerWorker.get(worker);
+    const hasRouter = this.routersPerWorker.has(worker);
 
-    if (count === undefined) {
+    if (!hasRouter) {
       return;
     }
 
+    const count = this.routersPerWorker.get(worker)!;
     this.routersPerWorker.set(worker, Math.max(0, count - 1));
   }
 }
