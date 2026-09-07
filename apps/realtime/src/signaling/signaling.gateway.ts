@@ -31,16 +31,17 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @MessageBody() { roomId, displayName }: JoinPayload,
   ) {
     const peerId = client.id;
-    const { peer, existingPeers, existingProducers } =
-      await this.signalingService.join(roomId, peerId, displayName);
+    const { peer, existingPeers, existingProducers } = await this.signalingService.join(
+      roomId,
+      peerId,
+      displayName,
+    );
 
     client.data.roomId = roomId;
     client.data.peerId = peerId;
     await client.join(roomId);
 
-    client
-      .to(roomId)
-      .emit('newPeer', { id: peer.id, displayName: peer.displayName });
+    client.to(roomId).emit('newPeer', { id: peer.id, displayName: peer.displayName });
 
     for (const existingProducer of existingProducers) {
       client.emit('newProducer', existingProducer);
@@ -50,9 +51,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
   }
 
   @SubscribeMessage('getRouterRtpCapabilities')
-  async getRouterRtpCapabilities(
-    @RequireSocketContext() { roomId }: SocketContext,
-  ) {
+  async getRouterRtpCapabilities(@RequireSocketContext() { roomId }: SocketContext) {
     const room = await this.signalingService.getRoom(roomId);
     return room.rtpCapabilities;
   }
@@ -62,11 +61,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { direction }: CreateTransportPayload,
   ) {
-    return this.signalingService.createWebRtcTransport(
-      roomId,
-      peerId,
-      direction,
-    );
+    return this.signalingService.createWebRtcTransport(roomId, peerId, direction);
   }
 
   @SubscribeMessage('connectWebRtcTransport')
@@ -74,12 +69,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { transportId, dtlsParameters }: ConnectTransportPayload,
   ) {
-    await this.signalingService.connectWebRtcTransport(
-      roomId,
-      peerId,
-      transportId,
-      dtlsParameters,
-    );
+    await this.signalingService.connectWebRtcTransport(roomId, peerId, transportId, dtlsParameters);
 
     return { connected: true };
   }
@@ -108,12 +98,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
     @RequireSocketContext() { roomId, peerId }: SocketContext,
     @MessageBody() { producerId, rtpCapabilities }: ConsumePayload,
   ) {
-    return this.signalingService.consume(
-      roomId,
-      peerId,
-      producerId,
-      rtpCapabilities,
-    );
+    return this.signalingService.consume(roomId, peerId, producerId, rtpCapabilities);
   }
 
   @SubscribeMessage('resumeConsumer')

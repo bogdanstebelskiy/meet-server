@@ -1,10 +1,7 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import {
-  RedisIoAdapter,
-  createRedisIoAdapter,
-} from '../../../src/redis/redis-io.adapter';
+import { RedisIoAdapter, createRedisIoAdapter } from '../../../src/redis/redis-io.adapter';
 import { REDIS_CLIENT } from '../../../src/redis/redis.provider';
 
 jest.mock('@socket.io/redis-adapter', () => ({
@@ -30,9 +27,7 @@ describe('RedisIoAdapter', () => {
 
     expect(createIOServerSpy).toHaveBeenCalledWith(0, undefined);
     expect(createAdapter).toHaveBeenCalledWith(pubClient, subClient);
-    expect(fakeServer.adapter).toHaveBeenCalledWith(
-      fakeRedisAdapterConstructor,
-    );
+    expect(fakeServer.adapter).toHaveBeenCalledWith(fakeRedisAdapterConstructor);
     expect(server).toBe(fakeServer);
 
     createIOServerSpy.mockRestore();
@@ -53,9 +48,7 @@ describe('createRedisIoAdapter', () => {
     };
     const app = fakeApp(pubClient);
 
-    const adapter = createRedisIoAdapter(
-      app as unknown as INestApplicationContext,
-    );
+    const adapter = createRedisIoAdapter(app as unknown as INestApplicationContext);
 
     expect(app.get).toHaveBeenCalledWith(REDIS_CLIENT);
     expect(pubClient.duplicate).toHaveBeenCalled();
@@ -77,9 +70,7 @@ describe('createRedisIoAdapter', () => {
     };
     const app = fakeApp(pubClient);
 
-    const adapter = createRedisIoAdapter(
-      app as unknown as INestApplicationContext,
-    );
+    const adapter = createRedisIoAdapter(app as unknown as INestApplicationContext);
     adapter.createIOServer(0);
 
     expect(createAdapter).toHaveBeenCalledWith(pubClient, subClient);

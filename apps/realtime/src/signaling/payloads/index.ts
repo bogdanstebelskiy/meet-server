@@ -1,9 +1,4 @@
-import type {
-  DtlsParameters,
-  MediaKind,
-  RtpCapabilities,
-  RtpParameters,
-} from 'mediasoup/types';
+import type { DtlsParameters, MediaKind, RtpCapabilities, RtpParameters } from 'mediasoup/types';
 import type { TransportDirection } from '../types';
 
 export interface JoinPayload {

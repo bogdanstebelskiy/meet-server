@@ -139,9 +139,7 @@ describe('MediaRoomsService', () => {
       stubWorkerCreatingRouter();
       await service.getOrCreateRoom('room-1');
 
-      expect(() => service.getPeer('room-1', 'missing')).toThrow(
-        NotFoundException,
-      );
+      expect(() => service.getPeer('room-1', 'missing')).toThrow(NotFoundException);
     });
   });
 
@@ -201,13 +199,9 @@ describe('MediaRoomsService', () => {
       const error = new Error('transport creation failed');
       router.createWebRtcTransport.mockRejectedValue(error);
 
-      await expect(
-        service.createTransport('room-1', 'peer-1', 'send'),
-      ).rejects.toThrow(error);
+      await expect(service.createTransport('room-1', 'peer-1', 'send')).rejects.toThrow(error);
 
-      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(
-        NotFoundException,
-      );
+      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(NotFoundException);
     });
 
     it('keeps an already-known peer around if createWebRtcTransport rejects on a second call', async () => {
@@ -220,9 +214,7 @@ describe('MediaRoomsService', () => {
       const error = new Error('transport creation failed');
       router.createWebRtcTransport.mockRejectedValue(error);
 
-      await expect(
-        service.createTransport('room-1', 'peer-1', 'recv'),
-      ).rejects.toThrow(error);
+      await expect(service.createTransport('room-1', 'peer-1', 'recv')).rejects.toThrow(error);
 
       expect(room.getPeer('peer-1')?.sendTransport).toBe(existingTransport);
     });
@@ -287,13 +279,7 @@ describe('MediaRoomsService', () => {
       };
       peer.sendTransport = transport as any;
 
-      const result = await service.produce(
-        'room-1',
-        'peer-1',
-        't1',
-        'audio',
-        {} as any,
-      );
+      const result = await service.produce('room-1', 'peer-1', 't1', 'audio', {} as any);
 
       expect(result).toBe(producer);
       expect(peer.producers.get('prod-1')).toBe(producer);
@@ -304,9 +290,9 @@ describe('MediaRoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
       room.getOrCreatePeer('peer-1');
 
-      await expect(
-        service.produce('room-1', 'peer-1', 't1', 'audio', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.produce('room-1', 'peer-1', 't1', 'audio', {} as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -340,9 +326,9 @@ describe('MediaRoomsService', () => {
       const peer = room.getOrCreatePeer('peer-1');
       peer.recvTransport = { consume: jest.fn() } as any;
 
-      await expect(
-        service.consume('room-1', 'peer-1', 'prod-1', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.consume('room-1', 'peer-1', 'prod-1', {} as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws NotFoundException when the peer has no recv transport yet', async () => {
@@ -350,9 +336,9 @@ describe('MediaRoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
       room.getOrCreatePeer('peer-1');
 
-      await expect(
-        service.consume('room-1', 'peer-1', 'prod-1', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.consume('room-1', 'peer-1', 'prod-1', {} as any)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -374,9 +360,9 @@ describe('MediaRoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
       room.getOrCreatePeer('peer-1');
 
-      await expect(
-        service.resumeConsumer('room-1', 'peer-1', 'missing'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.resumeConsumer('room-1', 'peer-1', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it("throws NotFoundException for a consumer left closed by its producer's peer being removed", async () => {
@@ -386,9 +372,9 @@ describe('MediaRoomsService', () => {
       const consumer = { closed: true, resume: jest.fn() };
       peer.consumers.set('cons-1', consumer as any);
 
-      await expect(
-        service.resumeConsumer('room-1', 'peer-1', 'cons-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.resumeConsumer('room-1', 'peer-1', 'cons-1')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(consumer.resume).not.toHaveBeenCalled();
     });
   });
@@ -423,9 +409,9 @@ describe('MediaRoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
       room.getOrCreatePeer('peer-1');
 
-      await expect(
-        service.pauseProducer('room-1', 'peer-1', 'missing'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.pauseProducer('room-1', 'peer-1', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws NotFoundException for a producer left closed by its transport being replaced', async () => {
@@ -435,9 +421,9 @@ describe('MediaRoomsService', () => {
       const producer = { closed: true, pause: jest.fn(), resume: jest.fn() };
       peer.producers.set('prod-1', producer as any);
 
-      await expect(
-        service.pauseProducer('room-1', 'peer-1', 'prod-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.pauseProducer('room-1', 'peer-1', 'prod-1')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(producer.pause).not.toHaveBeenCalled();
     });
   });
@@ -456,9 +442,7 @@ describe('MediaRoomsService', () => {
 
       expect(sendTransport.close).toHaveBeenCalledTimes(1);
       expect(recvTransport.close).toHaveBeenCalledTimes(1);
-      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(
-        NotFoundException,
-      );
+      expect(() => service.getPeer('room-1', 'peer-1')).toThrow(NotFoundException);
     });
 
     it('no-ops for an unknown peer, so a double-leave race stays quiet', async () => {

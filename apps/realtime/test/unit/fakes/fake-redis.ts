@@ -11,12 +11,7 @@ export class FakeRedis {
     return this.strings.get(key) ?? null;
   }
 
-  async set(
-    key: string,
-    value: string,
-    _mode: 'EX',
-    ttlSeconds: number,
-  ): Promise<'OK'> {
+  async set(key: string, value: string, _mode: 'EX', ttlSeconds: number): Promise<'OK'> {
     this.strings.set(key, value);
     this.ttls.set(key, ttlSeconds);
     return 'OK';

@@ -97,11 +97,7 @@ export class MediaRoomsService {
     return peer;
   }
 
-  async createTransport(
-    roomId: string,
-    peerId: string,
-    direction: TransportDirection,
-  ) {
+  async createTransport(roomId: string, peerId: string, direction: TransportDirection) {
     const room = this.getRoom(roomId);
     const peerExisted = room.getPeer(peerId) !== undefined;
     const peer = room.getOrCreatePeer(peerId);
@@ -163,9 +159,7 @@ export class MediaRoomsService {
     const peer = this.getPeer(roomId, peerId);
 
     if (peer.sendTransport?.id !== transportId) {
-      throw new NotFoundException(
-        `Send transport ${transportId} not found for peer ${peerId}`,
-      );
+      throw new NotFoundException(`Send transport ${transportId} not found for peer ${peerId}`);
     }
 
     const producer = await peer.sendTransport.produce({ kind, rtpParameters });
@@ -209,9 +203,7 @@ export class MediaRoomsService {
     // consumers map isn't told - so a stale id must 404 rather than throw
     // mediasoup's closed-resource error.
     if (!consumer || consumer.closed) {
-      throw new NotFoundException(
-        `Consumer ${consumerId} not found for peer ${peerId}`,
-      );
+      throw new NotFoundException(`Consumer ${consumerId} not found for peer ${peerId}`);
     }
 
     await consumer.resume();
@@ -271,9 +263,7 @@ export class MediaRoomsService {
     // peer's producers map isn't told - so a stale id must 404, not throw
     // mediasoup's closed-resource error.
     if (!producer || producer.closed) {
-      throw new NotFoundException(
-        `Producer ${producerId} not found for peer ${peerId}`,
-      );
+      throw new NotFoundException(`Producer ${producerId} not found for peer ${peerId}`);
     }
 
     return producer;
@@ -290,8 +280,6 @@ export class MediaRoomsService {
       return peer.recvTransport;
     }
 
-    throw new NotFoundException(
-      `Transport ${transportId} not found for peer ${peerId}`,
-    );
+    throw new NotFoundException(`Transport ${transportId} not found for peer ${peerId}`);
   }
 }

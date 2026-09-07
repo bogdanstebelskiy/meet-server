@@ -8,12 +8,7 @@ import { ChatModule } from './chat/chat.module';
 import { ChatGateway } from './chat/chat.gateway';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    RoomsModule,
-    SignalingModule,
-    ChatModule,
-  ],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), RoomsModule, SignalingModule, ChatModule],
   controllers: [AppController],
   providers: [AppService, ChatGateway],
 })

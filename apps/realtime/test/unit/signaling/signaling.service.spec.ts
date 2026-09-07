@@ -77,33 +77,22 @@ describe('SignalingService', () => {
 
   describe('join', () => {
     it('adds a new peer to the room and returns the others already present', async () => {
-      roomsService.getOtherPeers.mockResolvedValue([
-        { id: 'peer-existing', displayName: 'Bob' },
-      ]);
+      roomsService.getOtherPeers.mockResolvedValue([{ id: 'peer-existing', displayName: 'Bob' }]);
 
-      const { peer, existingPeers } = await service.join(
-        'room-1',
-        'peer-1',
-        'Alice',
-      );
+      const { peer, existingPeers } = await service.join('room-1', 'peer-1', 'Alice');
 
       expect(roomsService.addPeer).toHaveBeenCalledWith('room-1', {
         id: 'peer-1',
         displayName: 'Alice',
       });
       expect(peer).toEqual({ id: 'peer-1', displayName: 'Alice' });
-      expect(existingPeers).toEqual([
-        { id: 'peer-existing', displayName: 'Bob' },
-      ]);
+      expect(existingPeers).toEqual([{ id: 'peer-existing', displayName: 'Bob' }]);
     });
 
     it('does not include the joining peer itself in existingPeers', async () => {
       const { existingPeers } = await service.join('room-1', 'peer-1', 'Alice');
 
-      expect(roomsService.getOtherPeers).toHaveBeenCalledWith(
-        'room-1',
-        'peer-1',
-      );
+      expect(roomsService.getOtherPeers).toHaveBeenCalledWith('room-1', 'peer-1');
       expect(existingPeers).toEqual([]);
     });
 
@@ -111,9 +100,7 @@ describe('SignalingService', () => {
       const readError = new Error('redis blip');
       roomsService.getOtherPeers.mockRejectedValue(readError);
 
-      await expect(service.join('room-1', 'peer-1', 'Alice')).rejects.toThrow(
-        readError,
-      );
+      await expect(service.join('room-1', 'peer-1', 'Alice')).rejects.toThrow(readError);
 
       expect(roomsService.addPeer).toHaveBeenCalledWith('room-1', {
         id: 'peer-1',
@@ -127,23 +114,17 @@ describe('SignalingService', () => {
         { id: 'peer-bob', displayName: 'Bob' },
         { id: 'peer-carol', displayName: 'Carol' },
       ]);
-      roomsService.getProducers.mockImplementation(
-        async (_roomId: string, peerId: string) => {
-          if (peerId === 'peer-bob') {
-            return [
-              { producerId: 'prod-audio', kind: 'audio' },
-              { producerId: 'prod-video', kind: 'video' },
-            ];
-          }
-          return [{ producerId: 'prod-carol', kind: 'audio' }];
-        },
-      );
+      roomsService.getProducers.mockImplementation(async (_roomId: string, peerId: string) => {
+        if (peerId === 'peer-bob') {
+          return [
+            { producerId: 'prod-audio', kind: 'audio' },
+            { producerId: 'prod-video', kind: 'video' },
+          ];
+        }
+        return [{ producerId: 'prod-carol', kind: 'audio' }];
+      });
 
-      const { existingProducers } = await service.join(
-        'room-1',
-        'peer-1',
-        'Alice',
-      );
+      const { existingProducers } = await service.join('room-1', 'peer-1', 'Alice');
 
       expect(existingProducers).toEqual(
         expect.arrayContaining([
@@ -156,15 +137,9 @@ describe('SignalingService', () => {
     });
 
     it('returns empty existingProducers when nobody is producing', async () => {
-      roomsService.getOtherPeers.mockResolvedValue([
-        { id: 'peer-bob', displayName: 'Bob' },
-      ]);
+      roomsService.getOtherPeers.mockResolvedValue([{ id: 'peer-bob', displayName: 'Bob' }]);
 
-      const { existingProducers } = await service.join(
-        'room-1',
-        'peer-1',
-        'Alice',
-      );
+      const { existingProducers } = await service.join('room-1', 'peer-1', 'Alice');
 
       expect(existingProducers).toEqual([]);
     });
@@ -174,15 +149,11 @@ describe('SignalingService', () => {
     it('throws NotFoundException for an unknown room', async () => {
       roomsService.getRoom.mockResolvedValue(undefined);
 
-      await expect(service.getRoom('missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.getRoom('missing')).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException for an unknown peer in a known room', async () => {
-      await expect(service.getPeer('room-1', 'missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.getPeer('room-1', 'missing')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -195,11 +166,7 @@ describe('SignalingService', () => {
       const transport = { id: 't1' };
       sfuClient.createTransport.mockResolvedValue(transport);
 
-      const result = await service.createWebRtcTransport(
-        'room-1',
-        'peer-1',
-        'send',
-      );
+      const result = await service.createWebRtcTransport('room-1', 'peer-1', 'send');
 
       expect(result).toBe(transport);
       expect(sfuClient.createTransport).toHaveBeenCalledWith(
@@ -211,9 +178,9 @@ describe('SignalingService', () => {
     });
 
     it('throws NotFoundException for an unknown peer without calling the SfuClient', async () => {
-      await expect(
-        service.createWebRtcTransport('room-1', 'missing', 'send'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.createWebRtcTransport('room-1', 'missing', 'send')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(sfuClient.createTransport).not.toHaveBeenCalled();
     });
   });
@@ -254,13 +221,7 @@ describe('SignalingService', () => {
       });
       sfuClient.produce.mockResolvedValue({ id: 'prod-1' });
 
-      const result = await service.produce(
-        'room-1',
-        'peer-1',
-        't1',
-        'audio',
-        {} as any,
-      );
+      const result = await service.produce('room-1', 'peer-1', 't1', 'audio', {} as any);
 
       expect(result).toEqual({ id: 'prod-1' });
       expect(sfuClient.produce).toHaveBeenCalledWith(
@@ -271,18 +232,13 @@ describe('SignalingService', () => {
         'audio',
         {},
       );
-      expect(roomsService.addProducer).toHaveBeenCalledWith(
-        'room-1',
-        'peer-1',
-        'prod-1',
-        'audio',
-      );
+      expect(roomsService.addProducer).toHaveBeenCalledWith('room-1', 'peer-1', 'prod-1', 'audio');
     });
 
     it('throws NotFoundException for an unknown peer without calling the SfuClient', async () => {
-      await expect(
-        service.produce('room-1', 'missing', 't1', 'audio', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.produce('room-1', 'missing', 't1', 'audio', {} as any)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(sfuClient.produce).not.toHaveBeenCalled();
     });
   });
@@ -315,9 +271,9 @@ describe('SignalingService', () => {
     });
 
     it('throws NotFoundException for an unknown peer without calling the SfuClient', async () => {
-      await expect(
-        service.consume('room-1', 'missing', 'prod-1', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.consume('room-1', 'missing', 'prod-1', {} as any)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(sfuClient.consume).not.toHaveBeenCalled();
     });
   });
@@ -340,9 +296,9 @@ describe('SignalingService', () => {
     });
 
     it('throws NotFoundException for an unknown peer without calling the SfuClient', async () => {
-      await expect(
-        service.resumeConsumer('room-1', 'missing', 'cons-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.resumeConsumer('room-1', 'missing', 'cons-1')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(sfuClient.resumeConsumer).not.toHaveBeenCalled();
     });
   });
@@ -398,11 +354,7 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.removePeer).toHaveBeenCalledWith('room-1', 'peer-1');
-      expect(sfuClient.removePeer).toHaveBeenCalledWith(
-        'http://sfu-1',
-        'room-1',
-        'peer-1',
-      );
+      expect(sfuClient.removePeer).toHaveBeenCalledWith('http://sfu-1', 'room-1', 'peer-1');
       expect(roomsService.closeRoom).not.toHaveBeenCalled();
       expect(sfuClient.closeRoom).not.toHaveBeenCalled();
       expect(chatService.deleteRoomHistory).not.toHaveBeenCalled();
@@ -415,10 +367,7 @@ describe('SignalingService', () => {
       await service.leave('room-1', 'peer-1');
 
       expect(roomsService.closeRoom).toHaveBeenCalledWith('room-1');
-      expect(sfuClient.closeRoom).toHaveBeenCalledWith(
-        'http://sfu-1',
-        'room-1',
-      );
+      expect(sfuClient.closeRoom).toHaveBeenCalledWith('http://sfu-1', 'room-1');
       expect(chatService.deleteRoomHistory).toHaveBeenCalledWith('room-1');
     });
 

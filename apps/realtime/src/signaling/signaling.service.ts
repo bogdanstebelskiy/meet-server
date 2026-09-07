@@ -1,10 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type {
-  DtlsParameters,
-  MediaKind,
-  RtpCapabilities,
-  RtpParameters,
-} from 'mediasoup/types';
+import type { DtlsParameters, MediaKind, RtpCapabilities, RtpParameters } from 'mediasoup/types';
 import { RoomsService } from '../rooms/rooms.service';
 import { SfuClientService } from '../sfu-client/sfu-client.service';
 import { Peer } from '../rooms/types';
@@ -38,10 +33,7 @@ export class SignalingService {
       }));
 
       const producerFetchPromises = otherPeers.map(async (otherPeer) => {
-        const producers = await this.roomsService.getProducers(
-          roomId,
-          otherPeer.id,
-        );
+        const producers = await this.roomsService.getProducers(roomId, otherPeer.id);
         const producersWithPeerId = producers.map(({ producerId, kind }) => ({
           peerId: otherPeer.id,
           producerId,
@@ -84,20 +76,11 @@ export class SignalingService {
     return peer;
   }
 
-  async createWebRtcTransport(
-    roomId: string,
-    peerId: string,
-    direction: TransportDirection,
-  ) {
+  async createWebRtcTransport(roomId: string, peerId: string, direction: TransportDirection) {
     await this.getPeer(roomId, peerId);
     const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    return this.sfuClient.createTransport(
-      sfuNodeUrl,
-      roomId,
-      peerId,
-      direction,
-    );
+    return this.sfuClient.createTransport(sfuNodeUrl, roomId, peerId, direction);
   }
 
   async connectWebRtcTransport(
@@ -109,13 +92,7 @@ export class SignalingService {
     await this.getPeer(roomId, peerId);
     const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    await this.sfuClient.connectTransport(
-      sfuNodeUrl,
-      roomId,
-      peerId,
-      transportId,
-      dtlsParameters,
-    );
+    await this.sfuClient.connectTransport(sfuNodeUrl, roomId, peerId, transportId, dtlsParameters);
   }
 
   async produce(
@@ -150,13 +127,7 @@ export class SignalingService {
     await this.getPeer(roomId, peerId);
     const sfuNodeUrl = await this.resolveSfuNodeUrl(roomId);
 
-    return this.sfuClient.consume(
-      sfuNodeUrl,
-      roomId,
-      peerId,
-      producerId,
-      rtpCapabilities,
-    );
+    return this.sfuClient.consume(sfuNodeUrl, roomId, peerId, producerId, rtpCapabilities);
   }
 
   async resumeConsumer(roomId: string, peerId: string, consumerId: string) {
@@ -196,10 +167,7 @@ export class SignalingService {
       // nothing ever retries closeRoom once the Redis room key is gone.
       await this.sfuClient.removePeer(room.sfuNodeUrl, roomId, peerId);
     } catch (error) {
-      this.logger.error(
-        `Failed to remove peer ${peerId} from sfu room ${roomId}`,
-        error,
-      );
+      this.logger.error(`Failed to remove peer ${peerId} from sfu room ${roomId}`, error);
     }
 
     const isRoomEmpty = await this.roomsService.isEmpty(roomId);
@@ -220,16 +188,11 @@ export class SignalingService {
 
     this.sfuClient
       .closeRoom(room.sfuNodeUrl, roomId)
-      .catch((error) =>
-        this.logger.error(`Failed to close sfu room ${roomId}`, error),
-      );
+      .catch((error) => this.logger.error(`Failed to close sfu room ${roomId}`, error));
     this.chatService
       .deleteRoomHistory(roomId)
       .catch((error) =>
-        this.logger.error(
-          `Failed to delete chat history for room ${roomId}`,
-          error,
-        ),
+        this.logger.error(`Failed to delete chat history for room ${roomId}`, error),
       );
   }
 

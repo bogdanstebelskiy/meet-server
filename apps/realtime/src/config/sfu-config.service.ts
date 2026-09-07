@@ -9,10 +9,7 @@ export class SfuConfigService {
   // rooms are pinned to whichever one is least loaded at creation time (see
   // SfuRegistryService), not routed through a load balancer.
   get serviceUrls(): string[] {
-    const raw = this.configService.get<string>(
-      'SFU_SERVICE_URLS',
-      'http://localhost:3001',
-    );
+    const raw = this.configService.get<string>('SFU_SERVICE_URLS', 'http://localhost:3001');
 
     const rawUrls = raw.split(',');
     const trimmedUrls = rawUrls.map((url) => url.trim());

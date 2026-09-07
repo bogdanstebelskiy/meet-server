@@ -10,9 +10,7 @@ describe('WorkerSettingsConfigService', () => {
 
   beforeEach(() => {
     configService = { get: jest.fn() };
-    service = new WorkerSettingsConfigService(
-      configService as unknown as ConfigService,
-    );
+    service = new WorkerSettingsConfigService(configService as unknown as ConfigService);
   });
 
   describe('numWorkers', () => {

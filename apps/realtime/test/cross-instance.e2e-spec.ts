@@ -6,10 +6,7 @@ import { io, Socket as ClientSocket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
 import { AppModule as SfuAppModule } from '../../sfu/src/app.module';
 import { REDIS_CLIENT } from '../src/redis/redis.provider';
-import {
-  createRedisIoAdapter,
-  RedisIoAdapter,
-} from '../src/redis/redis-io.adapter';
+import { createRedisIoAdapter, RedisIoAdapter } from '../src/redis/redis-io.adapter';
 
 // Two real apps/realtime instances (plus one shared apps/sfu) over one
 // shared Redis, proving #6's actual point: a peer connected to instance A
@@ -98,10 +95,7 @@ describe('Cross-instance realtime scaling (e2e)', () => {
     }
 
     // Neither instance depends on the other - only on sfuServiceUrl above.
-    const [instA, instB] = await Promise.all([
-      bootRealtimeInstance(),
-      bootRealtimeInstance(),
-    ]);
+    const [instA, instB] = await Promise.all([bootRealtimeInstance(), bootRealtimeInstance()]);
 
     instanceA = instA.app;
     adapterA = instA.adapter;
@@ -156,20 +150,13 @@ describe('Cross-instance realtime scaling (e2e)', () => {
     });
   }
 
-  function emitAsync<T = any>(
-    client: ClientSocket,
-    event: string,
-    payload?: unknown,
-  ): Promise<T> {
+  function emitAsync<T = any>(client: ClientSocket, event: string, payload?: unknown): Promise<T> {
     return new Promise((resolve) => {
       client.emit(event, payload, (response: T) => resolve(response));
     });
   }
 
-  function waitForEvent<T = any>(
-    client: ClientSocket,
-    event: string,
-  ): Promise<T> {
+  function waitForEvent<T = any>(client: ClientSocket, event: string): Promise<T> {
     return new Promise((resolve) => client.once(event, resolve));
   }
 

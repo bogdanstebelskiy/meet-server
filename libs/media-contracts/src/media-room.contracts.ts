@@ -12,8 +12,7 @@ export const TRANSPORT_DIRECTIONS = {
   RECV: 'recv',
 } as const;
 
-export type TransportDirection =
-  (typeof TRANSPORT_DIRECTIONS)[keyof typeof TRANSPORT_DIRECTIONS];
+export type TransportDirection = (typeof TRANSPORT_DIRECTIONS)[keyof typeof TRANSPORT_DIRECTIONS];
 
 export interface MediaRoomResponse {
   roomId: string;

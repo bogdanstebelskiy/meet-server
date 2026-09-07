@@ -1,9 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type {
-  TransportPortRange,
-  WebRtcTransportOptions,
-} from 'mediasoup/types';
+import type { TransportPortRange, WebRtcTransportOptions } from 'mediasoup/types';
 
 @Injectable()
 export class WebRtcConfigService {

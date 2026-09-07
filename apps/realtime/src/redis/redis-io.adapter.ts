@@ -25,9 +25,7 @@ export class RedisIoAdapter extends IoAdapter {
 
 // Extracted so the DI lookup + duplicate() + wiring can be unit-tested
 // directly, instead of only running as part of main.ts's untested bootstrap().
-export function createRedisIoAdapter(
-  app: INestApplicationContext,
-): RedisIoAdapter {
+export function createRedisIoAdapter(app: INestApplicationContext): RedisIoAdapter {
   const logger = new Logger(RedisIoAdapter.name);
   const pubClient = app.get<Redis>(REDIS_CLIENT);
   const subClient = pubClient.duplicate();
@@ -35,12 +33,8 @@ export function createRedisIoAdapter(
   // ioredis treats an unhandled 'error' event as an uncaught exception and
   // crashes the process - both connections need a listener, since subClient
   // is a brand-new connection this adapter introduces.
-  pubClient.on('error', (error) =>
-    logger.error('Redis pub client error', error),
-  );
-  subClient.on('error', (error) =>
-    logger.error('Redis sub client error', error),
-  );
+  pubClient.on('error', (error) => logger.error('Redis pub client error', error));
+  subClient.on('error', (error) => logger.error('Redis sub client error', error));
 
   return new RedisIoAdapter(app, pubClient, subClient);
 }

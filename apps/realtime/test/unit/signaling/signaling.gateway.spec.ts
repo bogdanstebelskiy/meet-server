@@ -32,10 +32,7 @@ describe('SignalingGateway', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SignalingGateway,
-        { provide: SignalingService, useValue: signalingService },
-      ],
+      providers: [SignalingGateway, { provide: SignalingService, useValue: signalingService }],
     }).compile();
 
     gateway = module.get<SignalingGateway>(SignalingGateway);
@@ -56,11 +53,7 @@ describe('SignalingGateway', () => {
         displayName: 'Alice',
       });
 
-      expect(signalingService.join).toHaveBeenCalledWith(
-        'room-1',
-        'socket-1',
-        'Alice',
-      );
+      expect(signalingService.join).toHaveBeenCalledWith('room-1', 'socket-1', 'Alice');
       expect(client.data.roomId).toBe('room-1');
       expect(client.data.peerId).toBe('socket-1');
       expect(client.join).toHaveBeenCalledWith('room-1');
@@ -204,12 +197,7 @@ describe('SignalingGateway', () => {
         { producerId: 'prod-1', rtpCapabilities: {} },
       );
 
-      expect(signalingService.consume).toHaveBeenCalledWith(
-        'room-1',
-        'socket-1',
-        'prod-1',
-        {},
-      );
+      expect(signalingService.consume).toHaveBeenCalledWith('room-1', 'socket-1', 'prod-1', {});
       expect(result).toBe(consumeResponse);
     });
   });

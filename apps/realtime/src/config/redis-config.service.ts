@@ -6,10 +6,7 @@ export class RedisConfigService {
   constructor(private readonly configService: ConfigService) {}
 
   get url(): string {
-    return this.configService.get<string>(
-      'REDIS_URL',
-      'redis://localhost:6379',
-    );
+    return this.configService.get<string>('REDIS_URL', 'redis://localhost:6379');
   }
 
   get auth(): string | undefined {

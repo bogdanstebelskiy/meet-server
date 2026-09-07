@@ -71,14 +71,10 @@ describe('MediaRooms (e2e)', () => {
       const aliceId = 'alice';
       const bobId = 'bob';
 
-      const roomResponse = await request(server)
-        .put(`/media-rooms/${roomId}`)
-        .expect(200);
+      const roomResponse = await request(server).put(`/media-rooms/${roomId}`).expect(200);
       expect(roomResponse.body).toMatchObject({ roomId });
       const rtpCapabilities = roomResponse.body.rtpCapabilities;
-      expect(
-        rtpCapabilities.codecs.some((c: any) => c.mimeType === 'audio/opus'),
-      ).toBe(true);
+      expect(rtpCapabilities.codecs.some((c: any) => c.mimeType === 'audio/opus')).toBe(true);
 
       const aliceSendTransport = (
         await request(server)
@@ -94,9 +90,7 @@ describe('MediaRooms (e2e)', () => {
       });
 
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() })
         .expect(200)
         .expect({ connected: true });
@@ -108,9 +102,7 @@ describe('MediaRooms (e2e)', () => {
           .expect(201)
       ).body;
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${bobId}/transports/${bobRecvTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${bobId}/transports/${bobRecvTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() })
         .expect(200);
 
@@ -121,10 +113,7 @@ describe('MediaRooms (e2e)', () => {
           )
           .send({
             kind: 'audio',
-            rtpParameters: audioProducerRtpParameters(
-              rtpCapabilities,
-              11111111,
-            ),
+            rtpParameters: audioProducerRtpParameters(rtpCapabilities, 11111111),
           })
           .expect(201)
       ).body;
@@ -145,9 +134,7 @@ describe('MediaRooms (e2e)', () => {
       });
 
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${bobId}/consumers/${consumed.id}/resume`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${bobId}/consumers/${consumed.id}/resume`)
         .expect(200)
         .expect({ resumed: true });
     });
@@ -155,12 +142,8 @@ describe('MediaRooms (e2e)', () => {
     it('is idempotent: repeated create-or-get for the same roomId returns the same rtpCapabilities without a second router', async () => {
       const roomId = 'idempotent-room';
 
-      const first = await request(server)
-        .put(`/media-rooms/${roomId}`)
-        .expect(200);
-      const second = await request(server)
-        .put(`/media-rooms/${roomId}`)
-        .expect(200);
+      const first = await request(server).put(`/media-rooms/${roomId}`).expect(200);
+      const second = await request(server).put(`/media-rooms/${roomId}`).expect(200);
 
       expect(second.body).toEqual(first.body);
     });
@@ -186,15 +169,11 @@ describe('MediaRooms (e2e)', () => {
           .expect(201)
       ).body;
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() })
         .expect(200);
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/produce`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/produce`)
         .send({
           kind: 'audio',
           rtpParameters: audioProducerRtpParameters(rtpCapabilities, 22222222),
@@ -213,35 +192,24 @@ describe('MediaRooms (e2e)', () => {
           .send({ direction: 'send' })
       ).body;
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() });
       const produced = (
         await request(server)
-          .post(
-            `/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/produce`,
-          )
+          .post(`/media-rooms/${roomId}/peers/${peerId}/transports/${sendTransport.id}/produce`)
           .send({
             kind: 'audio',
-            rtpParameters: audioProducerRtpParameters(
-              room.body.rtpCapabilities,
-              33333333,
-            ),
+            rtpParameters: audioProducerRtpParameters(room.body.rtpCapabilities, 33333333),
           })
       ).body;
 
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/producers/${produced.id}/pause`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/producers/${produced.id}/pause`)
         .expect(200)
         .expect({ paused: true });
 
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/producers/${produced.id}/resume`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/producers/${produced.id}/resume`)
         .expect(200)
         .expect({ resumed: true });
     });
@@ -270,9 +238,7 @@ describe('MediaRooms (e2e)', () => {
         .send({ direction: 'send' });
 
       const response = await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${peerId}/transports/does-not-exist/produce`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${peerId}/transports/does-not-exist/produce`)
         .send({ kind: 'audio', rtpParameters: {} })
         .expect(404);
 
@@ -289,21 +255,14 @@ describe('MediaRooms (e2e)', () => {
           .send({ direction: 'send' })
       ).body;
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${producerId}/transports/${sendTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${producerId}/transports/${sendTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() });
       const produced = (
         await request(server)
-          .post(
-            `/media-rooms/${roomId}/peers/${producerId}/transports/${sendTransport.id}/produce`,
-          )
+          .post(`/media-rooms/${roomId}/peers/${producerId}/transports/${sendTransport.id}/produce`)
           .send({
             kind: 'audio',
-            rtpParameters: audioProducerRtpParameters(
-              room.body.rtpCapabilities,
-              44444444,
-            ),
+            rtpParameters: audioProducerRtpParameters(room.body.rtpCapabilities, 44444444),
           })
       ).body;
 
@@ -339,20 +298,13 @@ describe('MediaRooms (e2e)', () => {
           .send({ direction: 'send' })
       ).body;
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/connect`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/connect`)
         .send({ dtlsParameters: fakeDtlsParameters() });
       await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`)
         .send({
           kind: 'audio',
-          rtpParameters: audioProducerRtpParameters(
-            room.body.rtpCapabilities,
-            55555555,
-          ),
+          rtpParameters: audioProducerRtpParameters(room.body.rtpCapabilities, 55555555),
         });
       await request(server)
         .post(`/media-rooms/${roomId}/peers/${bobId}/transports`)
@@ -365,43 +317,29 @@ describe('MediaRooms (e2e)', () => {
 
       // Alice herself (and her transport with her) is gone from the room.
       const afterRemoval = await request(server)
-        .post(
-          `/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`,
-        )
+        .post(`/media-rooms/${roomId}/peers/${aliceId}/transports/${aliceSendTransport.id}/produce`)
         .send({
           kind: 'audio',
-          rtpParameters: audioProducerRtpParameters(
-            room.body.rtpCapabilities,
-            66666666,
-          ),
+          rtpParameters: audioProducerRtpParameters(room.body.rtpCapabilities, 66666666),
         })
         .expect(404);
       expect(afterRemoval.body.message).toContain(`Peer ${aliceId} not found`);
 
       // Bob still remains, so the router must not be closed yet.
-      const stillOpen = await request(server)
-        .delete(`/media-rooms/${roomId}`)
-        .expect(200);
+      const stillOpen = await request(server).delete(`/media-rooms/${roomId}`).expect(200);
       expect(stillOpen.body).toEqual({ closed: false });
-      await request(server)
-        .put(`/media-rooms/${roomId}`)
-        .expect(200)
-        .expect(room.body);
+      await request(server).put(`/media-rooms/${roomId}`).expect(200).expect(room.body);
 
       await request(server)
         .delete(`/media-rooms/${roomId}/peers/${bobId}`)
         .expect(200)
         .expect({ removed: true });
 
-      const closed = await request(server)
-        .delete(`/media-rooms/${roomId}`)
-        .expect(200);
+      const closed = await request(server).delete(`/media-rooms/${roomId}`).expect(200);
       expect(closed.body).toEqual({ closed: true });
 
       // The router is gone, so create-or-get spins up a brand new room.
-      const recreated = await request(server)
-        .put(`/media-rooms/${roomId}`)
-        .expect(200);
+      const recreated = await request(server).put(`/media-rooms/${roomId}`).expect(200);
       expect(recreated.body.roomId).toBe(roomId);
     });
 
@@ -414,9 +352,7 @@ describe('MediaRooms (e2e)', () => {
     });
 
     it('closing an unknown room reports already closed instead of 404ing, so a double-close race stays quiet', async () => {
-      const response = await request(server)
-        .delete('/media-rooms/no-such-room')
-        .expect(200);
+      const response = await request(server).delete('/media-rooms/no-such-room').expect(200);
 
       expect(response.body).toEqual({ closed: true });
     });

@@ -6,11 +6,7 @@ import { WorkersModule } from './workers/workers.module';
 import { MediaRoomsModule } from './media-rooms/media-rooms.module';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    WorkersModule,
-    MediaRoomsModule,
-  ],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), WorkersModule, MediaRoomsModule],
   controllers: [AppController],
   providers: [AppService],
 })

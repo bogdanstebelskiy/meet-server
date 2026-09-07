@@ -17,12 +17,7 @@ import type {
   ResumeProducerResponse,
   TransportDirection,
 } from '@app/media-contracts';
-import type {
-  DtlsParameters,
-  MediaKind,
-  RtpCapabilities,
-  RtpParameters,
-} from 'mediasoup/types';
+import type { DtlsParameters, MediaKind, RtpCapabilities, RtpParameters } from 'mediasoup/types';
 import type { HttpExceptionBody } from './types';
 
 @Injectable()
@@ -32,15 +27,10 @@ export class SfuClientService {
   getStats(nodeUrl: string): Promise<MediaRoomsStatsResponse> {
     const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.stats, {});
 
-    return this.request(() =>
-      this.httpService.get<MediaRoomsStatsResponse>(url),
-    );
+    return this.request(() => this.httpService.get<MediaRoomsStatsResponse>(url));
   }
 
-  createOrGetMediaRoom(
-    nodeUrl: string,
-    roomId: string,
-  ): Promise<MediaRoomResponse> {
+  createOrGetMediaRoom(nodeUrl: string, roomId: string): Promise<MediaRoomResponse> {
     const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.createOrGetRoom, {
       roomId,
     });
@@ -59,9 +49,7 @@ export class SfuClientService {
       peerId,
     });
 
-    return this.request(() =>
-      this.httpService.post<CreateTransportResponse>(url, { direction }),
-    );
+    return this.request(() => this.httpService.post<CreateTransportResponse>(url, { direction }));
   }
 
   connectTransport(
@@ -98,9 +86,7 @@ export class SfuClientService {
       transportId,
     });
 
-    return this.request(() =>
-      this.httpService.post<ProduceResponse>(url, { kind, rtpParameters }),
-    );
+    return this.request(() => this.httpService.post<ProduceResponse>(url, { kind, rtpParameters }));
   }
 
   consume(
@@ -135,9 +121,7 @@ export class SfuClientService {
       consumerId,
     });
 
-    return this.request(() =>
-      this.httpService.post<ResumeConsumerResponse>(url),
-    );
+    return this.request(() => this.httpService.post<ResumeConsumerResponse>(url));
   }
 
   pauseProducer(
@@ -152,9 +136,7 @@ export class SfuClientService {
       producerId,
     });
 
-    return this.request(() =>
-      this.httpService.post<PauseProducerResponse>(url),
-    );
+    return this.request(() => this.httpService.post<PauseProducerResponse>(url));
   }
 
   resumeProducer(
@@ -169,16 +151,10 @@ export class SfuClientService {
       producerId,
     });
 
-    return this.request(() =>
-      this.httpService.post<ResumeProducerResponse>(url),
-    );
+    return this.request(() => this.httpService.post<ResumeProducerResponse>(url));
   }
 
-  removePeer(
-    nodeUrl: string,
-    roomId: string,
-    peerId: string,
-  ): Promise<RemovePeerResponse> {
+  removePeer(nodeUrl: string, roomId: string, peerId: string): Promise<RemovePeerResponse> {
     const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.removePeer, {
       roomId,
       peerId,
@@ -195,11 +171,7 @@ export class SfuClientService {
 
   // Every call targets a specific sfu instance's URL rather than a shared
   // fixed baseURL - see sfu-client.module.ts.
-  private buildUrl(
-    nodeUrl: string,
-    pattern: string,
-    params: Record<string, string>,
-  ): string {
+  private buildUrl(nodeUrl: string, pattern: string, params: Record<string, string>): string {
     const path = buildMediaRoomPath(pattern, params);
     return `${nodeUrl}${path}`;
   }
@@ -210,9 +182,7 @@ export class SfuClientService {
   // failure (apps/sfu unreachable, timed out) has no response body to read,
   // so it's reported as 503 rather than left to escape as a raw AxiosError,
   // which WsExceptionFilter would otherwise mask as an opaque 500.
-  private async request<T>(
-    call: () => Observable<AxiosResponse<T>>,
-  ): Promise<T> {
+  private async request<T>(call: () => Observable<AxiosResponse<T>>): Promise<T> {
     try {
       const observable = call();
       const response = await firstValueFrom(observable);

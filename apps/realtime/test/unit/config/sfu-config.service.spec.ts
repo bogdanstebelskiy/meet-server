@@ -12,9 +12,7 @@ describe('SfuConfigService', () => {
 
   describe('serviceUrls', () => {
     it('falls back to a single localhost url when unset', () => {
-      configService.get.mockImplementation(
-        (_key: string, fallback: string) => fallback,
-      );
+      configService.get.mockImplementation((_key: string, fallback: string) => fallback);
 
       expect(service.serviceUrls).toEqual(['http://localhost:3001']);
     });
@@ -22,21 +20,13 @@ describe('SfuConfigService', () => {
     it('splits a comma-separated list into individual urls', () => {
       configService.get.mockReturnValue('http://sfu-1:3001,http://sfu-2:3001');
 
-      expect(service.serviceUrls).toEqual([
-        'http://sfu-1:3001',
-        'http://sfu-2:3001',
-      ]);
+      expect(service.serviceUrls).toEqual(['http://sfu-1:3001', 'http://sfu-2:3001']);
     });
 
     it('trims whitespace and drops empty entries', () => {
-      configService.get.mockReturnValue(
-        ' http://sfu-1:3001 , , http://sfu-2:3001,',
-      );
+      configService.get.mockReturnValue(' http://sfu-1:3001 , , http://sfu-2:3001,');
 
-      expect(service.serviceUrls).toEqual([
-        'http://sfu-1:3001',
-        'http://sfu-2:3001',
-      ]);
+      expect(service.serviceUrls).toEqual(['http://sfu-1:3001', 'http://sfu-2:3001']);
     });
   });
 });

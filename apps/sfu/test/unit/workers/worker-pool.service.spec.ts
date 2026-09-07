@@ -17,9 +17,7 @@ describe('WorkerPoolService', () => {
 
   beforeEach(async () => {
     nextPid = 1000;
-    (createWorker as jest.Mock).mockImplementation(() =>
-      Promise.resolve(createFakeWorker()),
-    );
+    (createWorker as jest.Mock).mockImplementation(() => Promise.resolve(createFakeWorker()));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -46,9 +44,7 @@ describe('WorkerPoolService', () => {
   });
 
   it('reserveWorker throws before onModuleInit has run, instead of returning undefined', () => {
-    expect(() => service.reserveWorker()).toThrow(
-      /no mediasoup workers available/i,
-    );
+    expect(() => service.reserveWorker()).toThrow(/no mediasoup workers available/i);
   });
 
   it('reserveWorker picks the worker with the fewest routers, not blind round-robin', async () => {
@@ -82,25 +78,17 @@ describe('WorkerPoolService', () => {
     service.trackRouterClosed(worker);
     service.trackRouterClosed(worker);
 
-    const picks = [
-      service.reserveWorker(),
-      service.reserveWorker(),
-      service.reserveWorker(),
-    ];
+    const picks = [service.reserveWorker(), service.reserveWorker(), service.reserveWorker()];
     expect(new Set(picks).size).toBe(3);
   });
 
   it('exits the process shortly after a worker dies', async () => {
     jest.useFakeTimers();
-    const exitSpy = jest
-      .spyOn(process, 'exit')
-      .mockImplementation(() => undefined as never);
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
     await service.onModuleInit();
     const worker = service.reserveWorker() as unknown as { on: jest.Mock };
-    const diedHandler = worker.on.mock.calls.find(
-      ([event]) => event === 'died',
-    )?.[1];
+    const diedHandler = worker.on.mock.calls.find(([event]) => event === 'died')?.[1];
 
     expect(diedHandler).toBeDefined();
     diedHandler();

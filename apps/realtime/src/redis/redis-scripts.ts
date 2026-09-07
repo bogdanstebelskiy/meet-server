@@ -2,10 +2,7 @@ import type { Redis, Result } from 'ioredis';
 
 declare module 'ioredis' {
   interface RedisCommander<Context> {
-    closeRoomIfEmpty(
-      peersKey: string,
-      roomKey: string,
-    ): Result<number, Context>;
+    closeRoomIfEmpty(peersKey: string, roomKey: string): Result<number, Context>;
   }
 }
 

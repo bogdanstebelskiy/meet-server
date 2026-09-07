@@ -119,20 +119,13 @@ describe('Signaling (e2e)', () => {
     });
   }
 
-  function emitAsync<T = any>(
-    client: ClientSocket,
-    event: string,
-    payload?: unknown,
-  ): Promise<T> {
+  function emitAsync<T = any>(client: ClientSocket, event: string, payload?: unknown): Promise<T> {
     return new Promise((resolve) => {
       client.emit(event, payload, (response: T) => resolve(response));
     });
   }
 
-  function waitForEvent<T = any>(
-    client: ClientSocket,
-    event: string,
-  ): Promise<T> {
+  function waitForEvent<T = any>(client: ClientSocket, event: string): Promise<T> {
     return new Promise((resolve) => client.once(event, resolve));
   }
 
@@ -179,21 +172,12 @@ describe('Signaling (e2e)', () => {
       });
       expect(await bobNewPeer).toEqual({ id: bob.id, displayName: 'Bob' });
 
-      const rtpCapabilities = await emitAsync(
-        alice,
-        'getRouterRtpCapabilities',
-      );
-      expect(
-        rtpCapabilities.codecs.some((c: any) => c.mimeType === 'audio/opus'),
-      ).toBe(true);
+      const rtpCapabilities = await emitAsync(alice, 'getRouterRtpCapabilities');
+      expect(rtpCapabilities.codecs.some((c: any) => c.mimeType === 'audio/opus')).toBe(true);
 
-      const aliceSendTransport = await emitAsync(
-        alice,
-        'createWebRtcTransport',
-        {
-          direction: 'send',
-        },
-      );
+      const aliceSendTransport = await emitAsync(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
       expect(aliceSendTransport).toMatchObject({
         id: expect.any(String),
         iceParameters: expect.any(Object),
@@ -266,14 +250,10 @@ describe('Signaling (e2e)', () => {
         direction: 'send',
       });
 
-      const { ack, exception } = await observeOutcome(
-        client,
-        'connectWebRtcTransport',
-        {
-          transportId: transport.id,
-          dtlsParameters: fakeDtlsParameters(),
-        },
-      );
+      const { ack, exception } = await observeOutcome(client, 'connectWebRtcTransport', {
+        transportId: transport.id,
+        dtlsParameters: fakeDtlsParameters(),
+      });
 
       expect(ack).toEqual({ connected: true });
       expect(exception).toBe('EXCEPTION_NOT_EMITTED');
@@ -314,9 +294,7 @@ describe('Signaling (e2e)', () => {
       const [, erinJoin] = await Promise.all([davePromise, erinPromise]);
 
       // If regressed, Erin wouldn't see Dave: they'd be on separate rooms.
-      expect(erinJoin.existingPeers).toEqual([
-        { id: dave.id, displayName: 'Dave' },
-      ]);
+      expect(erinJoin.existingPeers).toEqual([{ id: dave.id, displayName: 'Dave' }]);
 
       const rtpCapabilities = await emitAsync(dave, 'getRouterRtpCapabilities');
       const daveSendTransport = await emitAsync(dave, 'createWebRtcTransport', {
@@ -372,17 +350,10 @@ describe('Signaling (e2e)', () => {
         roomId: 'no-recv-room',
         displayName: 'Frank',
       });
-      const rtpCapabilities = await emitAsync(
-        producerClient,
-        'getRouterRtpCapabilities',
-      );
-      const sendTransport = await emitAsync(
-        producerClient,
-        'createWebRtcTransport',
-        {
-          direction: 'send',
-        },
-      );
+      const rtpCapabilities = await emitAsync(producerClient, 'getRouterRtpCapabilities');
+      const sendTransport = await emitAsync(producerClient, 'createWebRtcTransport', {
+        direction: 'send',
+      });
       await emitAsync(producerClient, 'connectWebRtcTransport', {
         transportId: sendTransport.id,
         dtlsParameters: fakeDtlsParameters(),
@@ -424,15 +395,10 @@ describe('Signaling (e2e)', () => {
         roomId: 'late-joiner-room',
         displayName: 'Alice',
       });
-      const rtpCapabilities = await emitAsync(
-        alice,
-        'getRouterRtpCapabilities',
-      );
-      const aliceSendTransport = await emitAsync(
-        alice,
-        'createWebRtcTransport',
-        { direction: 'send' },
-      );
+      const rtpCapabilities = await emitAsync(alice, 'getRouterRtpCapabilities');
+      const aliceSendTransport = await emitAsync(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
       await emitAsync(alice, 'connectWebRtcTransport', {
         transportId: aliceSendTransport.id,
         dtlsParameters: fakeDtlsParameters(),
@@ -451,9 +417,7 @@ describe('Signaling (e2e)', () => {
         displayName: 'Bob',
       });
 
-      expect(bobJoin.existingPeers).toEqual([
-        { id: alice.id, displayName: 'Alice' },
-      ]);
+      expect(bobJoin.existingPeers).toEqual([{ id: alice.id, displayName: 'Alice' }]);
       expect(await bobNewProducer).toEqual({
         peerId: alice.id,
         producerId: produced.id,
@@ -485,15 +449,10 @@ describe('Signaling (e2e)', () => {
         roomId: 'already-paused-room',
         displayName: 'Alice',
       });
-      const rtpCapabilities = await emitAsync(
-        alice,
-        'getRouterRtpCapabilities',
-      );
-      const aliceSendTransport = await emitAsync(
-        alice,
-        'createWebRtcTransport',
-        { direction: 'send' },
-      );
+      const rtpCapabilities = await emitAsync(alice, 'getRouterRtpCapabilities');
+      const aliceSendTransport = await emitAsync(alice, 'createWebRtcTransport', {
+        direction: 'send',
+      });
       await emitAsync(alice, 'connectWebRtcTransport', {
         transportId: aliceSendTransport.id,
         dtlsParameters: fakeDtlsParameters(),
@@ -559,9 +518,7 @@ describe('Signaling (e2e)', () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const mediaRoomsService = sfuApp.get(MediaRoomsService);
-      expect(() => mediaRoomsService.getPeer(roomId, alicePeerId)).toThrow(
-        NotFoundException,
-      );
+      expect(() => mediaRoomsService.getPeer(roomId, alicePeerId)).toThrow(NotFoundException);
     });
   });
 

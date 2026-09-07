@@ -74,12 +74,8 @@ export class RoomsService {
     const all = await this.redis.hgetall(peersKey);
 
     const entries = Object.entries(all);
-    const otherPeerEntries = entries.filter(
-      ([peerId]) => peerId !== excludePeerId,
-    );
-    const otherPeers = otherPeerEntries.map(
-      ([, raw]) => JSON.parse(raw) as Peer,
-    );
+    const otherPeerEntries = entries.filter(([peerId]) => peerId !== excludePeerId);
+    const otherPeers = otherPeerEntries.map(([, raw]) => JSON.parse(raw) as Peer);
 
     return otherPeers;
   }
@@ -161,10 +157,7 @@ export class RoomsService {
 
   private async createRoom(roomId: string): Promise<Room> {
     const sfuNodeUrl = await this.sfuRegistry.pickLeastLoaded();
-    const { rtpCapabilities } = await this.sfuClient.createOrGetMediaRoom(
-      sfuNodeUrl,
-      roomId,
-    );
+    const { rtpCapabilities } = await this.sfuClient.createOrGetMediaRoom(sfuNodeUrl, roomId);
     const room: Room = { id: roomId, rtpCapabilities, sfuNodeUrl };
 
     const roomKey = this.roomKey(roomId);

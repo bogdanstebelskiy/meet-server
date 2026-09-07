@@ -42,10 +42,7 @@ describe('RoomsService', () => {
 
       const room = await service.getOrCreateRoom('room-1');
 
-      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith(
-        'http://sfu-1',
-        'room-1',
-      );
+      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith('http://sfu-1', 'room-1');
       expect(room).toEqual({
         id: 'room-1',
         rtpCapabilities,
@@ -64,10 +61,7 @@ describe('RoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
 
       expect(room.sfuNodeUrl).toBe('http://sfu-2');
-      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith(
-        'http://sfu-2',
-        'room-1',
-      );
+      expect(sfuClient.createOrGetMediaRoom).toHaveBeenCalledWith('http://sfu-2', 'room-1');
     });
 
     it('sets a TTL on the room key', async () => {
@@ -178,9 +172,7 @@ describe('RoomsService', () => {
 
   describe('removePeer / isEmpty / closeRoom', () => {
     it('removePeer is a no-op for an unknown peer id, not a throw', async () => {
-      await expect(
-        service.removePeer('room-1', 'missing'),
-      ).resolves.not.toThrow();
+      await expect(service.removePeer('room-1', 'missing')).resolves.not.toThrow();
     });
 
     it('removes the peer but leaves the room non-empty while others remain', async () => {

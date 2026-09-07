@@ -16,6 +16,5 @@ export function extractSocketContext(context: ExecutionContext): SocketContext {
 // Turns a missing roomId/peerId into a clear WsException instead of letting
 // undefined flow into mediasoup calls expecting a string id.
 export const RequireSocketContext = createParamDecorator(
-  (_data: unknown, context: ExecutionContext): SocketContext =>
-    extractSocketContext(context),
+  (_data: unknown, context: ExecutionContext): SocketContext => extractSocketContext(context),
 );

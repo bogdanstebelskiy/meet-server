@@ -8,10 +8,7 @@ import type { ChatMessage } from './types';
 export class ChatService {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
-  async addMessage(
-    roomId: string,
-    message: Omit<ChatMessage, 'id'>,
-  ): Promise<ChatMessage> {
+  async addMessage(roomId: string, message: Omit<ChatMessage, 'id'>): Promise<ChatMessage> {
     const streamKey = this.streamKey(roomId);
     const serializedMessage = JSON.stringify(message);
     const id = await this.redis.xadd(
@@ -36,9 +33,7 @@ export class ChatService {
 
     const streamKey = this.streamKey(roomId);
     const entries = await this.redis.xrange(streamKey, start, '+');
-    const messages = entries.map(([id, fields]) =>
-      this.toChatMessage(id, fields),
-    );
+    const messages = entries.map(([id, fields]) => this.toChatMessage(id, fields));
 
     return messages;
   }
