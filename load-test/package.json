@@ -1,0 +1,14 @@
+{
+  "name": "meet-server-load-test",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Reproducible containerized load test for meet-server's sfu horizontal scaling - not part of the shipped apps. See README.md.",
+  "type": "module",
+  "dependencies": {
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "@types/node": "^22.10.7"
+  }
+}
