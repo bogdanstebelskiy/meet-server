@@ -30,20 +30,21 @@ jobs:
           fetch-depth: 2
       - name: Filter changed paths
         id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          base: HEAD~1
-          filters: |
-            realtime:
-              - 'apps/realtime/**'
-              - 'libs/**'
-              - 'package.json'
-              - 'package-lock.json'
-            sfu:
-              - 'apps/sfu/**'
-              - 'libs/**'
-              - 'package.json'
-              - 'package-lock.json'
+        run: |
+          changed=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$changed"
+
+          realtime=false
+          sfu=false
+          if echo "$changed" | grep -qE '^(apps/realtime/|libs/|package\.json$|package-lock\.json$)'; then
+            realtime=true
+          fi
+          if echo "$changed" | grep -qE '^(apps/sfu/|libs/|package\.json$|package-lock\.json$)'; then
+            sfu=true
+          fi
+          echo "realtime=$realtime" >> "$GITHUB_OUTPUT"
+          echo "sfu=$sfu" >> "$GITHUB_OUTPUT"
       - name: Build image matrix
         id: set-matrix
         run: |
