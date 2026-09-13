@@ -4,47 +4,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-```bash
-npm run build          # nest build
-npm run start:dev      # watch mode
-npm run lint           # eslint --fix on src/apps/libs/test
-npm run format         # prettier --write on src/test
+This is a Nest CLI monorepo (`nest-cli.json` has `"monorepo": true`): `apps/realtime` (signaling gateway, `Room`/`Peer` membership state, chat, redis — calls `apps/sfu` over REST for everything mediasoup-related), `apps/sfu` (mediasoup `Worker` pool and `MediaRoom`/`MediaPeer` state, exposed as a REST API), and `libs/media-contracts` (the REST request/response DTOs shared by both apps). See `CONTEXT.md` and `docs/adr/0001-separate-sfu-and-realtime-apps.md` for why.
 
-npm run test           # unit tests (test/unit/**/*.spec.ts), via root jest config in package.json
+```bash
+npm run build          # nest build (bare command defaults to the "realtime" project)
+npx nest build sfu     # build a specific app explicitly
+npm run start:dev      # watch mode, defaults to "realtime"
+npm run lint           # eslint --fix on apps/libs
+npm run format         # prettier --write on apps/libs
+
+npm run test           # unit tests (apps/**/*.spec.ts, libs/**/*.spec.ts), via root jest config in package.json
 npm run test:watch
 npm run test:cov
-npm run test:e2e       # e2e tests (test/**/*.e2e-spec.ts), via test/jest-e2e.json — spins up a real Nest app + real mediasoup workers + real socket.io clients, no browser
+npm run test:e2e       # e2e tests (apps/realtime/test/**/*.e2e-spec.ts), via apps/realtime/test/jest-e2e.json — boots real apps/realtime + apps/sfu Nest apps (real mediasoup workers) wired together over real HTTP, driven by real socket.io clients, no browser
+npm run test:e2e:sfu   # e2e tests for apps/sfu, via apps/sfu/test/jest-e2e.json — real Nest app + real mediasoup workers, driven directly over HTTP with supertest
 ```
 
-Run a single unit test file: `npx jest test/unit/rooms/rooms.service.spec.ts`
-Run a single e2e test file: `npx jest --config ./test/jest-e2e.json test/signaling.e2e-spec.ts`
+Run a single unit test file: `npx jest apps/realtime/test/unit/rooms/rooms.service.spec.ts`
+Run a single e2e test file: `npx jest --config ./apps/realtime/test/jest-e2e.json apps/realtime/test/signaling.e2e-spec.ts`
 
-Unit and e2e tests use separate Jest configs (root `package.json` vs `test/jest-e2e.json`) with different `testRegex`/`roots` — don't expect `npm test` to pick up `*.e2e-spec.ts` files or vice versa.
+Unit and e2e tests use separate Jest configs (root `package.json` vs each app's `test/jest-e2e.json`) with different `testRegex`/`roots` — don't expect `npm test` to pick up `*.e2e-spec.ts` files or vice versa. Each app carries its own `test/jest-e2e.json`.
+
+### Local dev (running both apps)
+
+`npm run start:dev` only starts `apps/realtime`. Since #17, `apps/realtime` needs a running `apps/sfu` to do anything past a bare WS connection (`join`, `produce`, `consume`, etc. all call out to it) — run both, on different ports:
+
+```bash
+PORT=3002 npx nest start sfu --watch                              # apps/sfu
+SFU_SERVICE_URLS=http://localhost:3002 npm run start:dev          # apps/realtime
+```
+
+Both apps default to port 3000 (`process.env.PORT ?? 3000` in each `main.ts`) if `PORT` is unset, so starting both without setting it crashes the second one with `EADDRINUSE`. `SFU_SERVICE_URLS` itself defaults to `http://localhost:3001` when unset — pick whatever port is actually free on your machine and set both `PORT` (for `apps/sfu`) and `SFU_SERVICE_URLS` (for `apps/realtime`) to match; don't rely on the 3001 default colliding silently with something else already running there (a "socket hang up"/connection-reset error instead of a clean "connection refused" is the symptom of exactly that).
+
+`SFU_SERVICE_URLS` takes a comma-separated list (`http://localhost:3002,http://localhost:3003`) to run several `apps/sfu` instances behind one `apps/realtime` — each room is pinned once, at creation, to whichever configured instance currently reports the fewest rooms (`SfuRegistryService`, `apps/realtime/src/sfu-client/sfu-registry.service.ts`). A single value keeps today's one-instance behavior.
+
+### Docker
+
+Each app has its own multi-stage `Dockerfile` (`apps/realtime/Dockerfile`, `apps/sfu/Dockerfile`), proving the two apps are independently buildable and deployable per `docs/adr/0001-separate-sfu-and-realtime-apps.md`. Both share the root `package.json`/`libs/`, so the build context is the repo root, not the app directory:
+
+```bash
+docker build -f apps/realtime/Dockerfile -t meet-realtime .
+docker build -f apps/sfu/Dockerfile -t meet-sfu .
+
+docker run -p 3001:3000 --name sfu meet-sfu
+docker run -p 3000:3000 -e REDIS_URL=redis://<host>:6379 -e SFU_SERVICE_URLS=http://<sfu-host>:3001 meet-realtime
+```
+
+`apps/realtime` needs `SFU_SERVICE_URLS` pointed at reachable `apps/sfu` instance(s) for anything past a bare WS connection (`join`, `produce`, `consume`, etc. all call out to it) — it defaults to `http://localhost:3001` when unset, which only works if both apps happen to run on the same host. It also still needs a reachable Redis at `REDIS_URL` for chat history; without one it still boots and serves HTTP, but logs `ioredis` connection errors in the background.
+
+## Code style
+
+Repo-wide coding-style rules (no inline call arguments, no inline chain transformations, no ternaries/inline ifs, no explicit `undefined` returns, no types in service files) live in `.claude/rules/code-style.md`, which loads automatically for every session in this repo — nothing further to read here.
 
 ## Architecture
 
-This is a mediasoup SFU (selective forwarding unit) signaling server for video calls, built on NestJS with socket.io gateways. The reference implementation is [mediasoup-demo v3](https://github.com/versatica/mediasoup-demo/tree/v3); this repo maps that reference onto three NestJS modules split by *rate of change*, not by layer:
+This is a mediasoup SFU (selective forwarding unit) signaling server for video calls, split across two NestJS apps by *rate of change*: `apps/sfu` owns the mediasoup side, `apps/realtime` owns everything client-facing, and they talk over a REST API described by `libs/media-contracts`. See `docs/adr/0001-separate-sfu-and-realtime-apps.md` for why the split happened and `CONTEXT.md` for the `Room`/`MediaRoom`/`Peer` vocabulary.
 
-- **`sfu`** — owns mediasoup `Worker` processes only. One worker per CPU core, spawned at `onModuleInit`. Hands out the least-loaded worker (by router count, not round-robin) for `rooms` to create a `Router` on. Knows nothing about rooms, peers, or signaling. A worker `died` event exits the process entirely (no in-process recovery) — restart is a process manager's job (pm2/systemd/k8s). `mediaCodecs` (the RTP capability contract) lives in `sfu/config`, not `rooms`, even though `rooms` consumes it when calling `createRouter`.
-- **`rooms`** — owns `Router` + peer membership, no WS/transport code. `RoomsService` is a `Map<roomId, Room>`; rooms are created lazily on first join and closed when the last peer leaves. `Room` = one `Router` (fetched once from `sfu` at creation, never migrated between workers) + `Map<peerId, Peer>`. `Peer` holds two `WebRtcTransport`s (send + recv) plus its producers/consumers. `getOrCreateRoom` dedupes concurrent room creation via a `pendingRooms: Map<roomId, Promise<Room>>` so two peers joining a brand-new room at the same instant don't each create their own router.
-- **`signaling`** — the only module that talks to clients (`SignalingGateway`, socket.io). Translates WS request/ack events (`join`, `createWebRtcTransport`, `produce`, `consume`, `pauseProducer`, etc.) into calls against `rooms`/mediasoup objects, and pushes server-initiated notifications (`newPeer`, `newProducer`, `producerPaused`, `peerClosed`, etc.) back out. `join`'s ack only returns `existingPeers`; producers of already-joined peers are backfilled to the new socket via direct (non-broadcast) `newProducer` emits right after the join ack, since that's otherwise the only event that tells a client about a producer.
-- **`chat`** — text chat backed by Redis Streams (`XADD`/`XRANGE`, capped with `MAXLEN ~`), keyed per room (`chat:<roomId>`), so history resumes from the last seen message ID. Depends on `redis` and `rooms`. `ChatModule` is not currently imported into `AppModule`.
-- **`redis`** — single `ioredis` client behind the `REDIS_CLIENT` DI token; connection config from `REDIS_URL`/`REDIS_AUTH` env vars.
-
-Full design reasoning (why the module split, why least-loaded over round-robin, why two transports per peer, why socket.io over protoo, mediasoup typing gotchas, LAN/HTTPS testing requirements, etc.) is in `docs/sfu-signaling-design.md` — read it before changing anything in `sfu`/`rooms`/`signaling`, since most non-obvious decisions there are already justified and shouldn't be re-litigated without reading why first.
-
-### Cross-cutting
-
-- **WS exception handling**: `src/common/ws-exception.filter.ts` re-wraps `HttpException`s as `WsException` so their real message reaches the client (Nest's default WS error handling only preserves messages for `WsException` itself). `@nestjs/websockets` has no global WS filter support, so every gateway must apply `@UseFilters(new WsExceptionFilter())` itself — it will silently not apply otherwise.
-- **Ack payloads**: every WS handler must return a non-nil object. `@nestjs/platform-socket.io` silently drops `undefined`/`null` handler returns, so a client awaiting the ack hangs forever with no error.
-- **Local network testing**: `sfu/config`'s `webRtcAnnouncedAddress` must be a real LAN IP (not `0.0.0.0`/`127.0.0.1`) for cross-device/browser testing to work. `main.ts` loads HTTPS certs from `certificates/` (mkcert-generated, gitignored) when present, since phone/LAN testing needs TLS to avoid mixed-content WS blocking.
-
-### Test strategy
-
-Three tiers, matched to what each can actually prove:
-- **Unit** (`test/unit`, Jest root config): worker-picker, room join/leave state machine, message dispatch — all mockable, no real mediasoup process.
-- **E2E** (`test/*.e2e-spec.ts`, `test/jest-e2e.json`): real Nest app, real mediasoup workers, real socket.io clients; fabricated but syntactically valid `dtlsParameters` stand in for a browser's ICE/DTLS since the signaling RPCs don't block on actual connectivity. This tier has caught every non-obvious bug recorded in `docs/sfu-signaling-design.md`.
-- **Browser e2e**: not implemented (no client in this repo) — would be the only tier proving real ICE/DTLS negotiation and multi-tab UX.
+Each app has its own `CLAUDE.md` with its module breakdown (`apps/sfu/CLAUDE.md`, `apps/realtime/CLAUDE.md`) — Claude Code loads the relevant one automatically once you're reading/editing files in that app. See `docs/architecture.md` for what's shared across both: cross-cutting gotchas and the test strategy.
 
 ## Agent skills
 

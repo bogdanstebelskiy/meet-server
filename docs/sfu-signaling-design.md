@@ -33,7 +33,10 @@ core count is the natural ceiling, not a config guess.
 **Least-loaded picking, not round-robin.** Round-robin drifts unbalanced once rooms
 close at different rates (a stale room on worker A ties up capacity round-robin
 doesn't know about). Tracking router-count-per-worker and picking the minimum every
-time keeps the pool actually balanced under real churn.
+time keeps the pool actually balanced under real churn. `reserveWorker()` picks and
+reserves the slot in one synchronous call (no `await` in between), so a burst of
+concurrent room-creation calls can't all read the same pre-burst counts and pile
+onto one worker.
 
 **Worker `died` exits the process.** This mirrors mediasoup's own guidance: a dead
 worker (native binary crash) is not a recoverable state within the process, and

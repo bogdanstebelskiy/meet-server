@@ -1,8 +1,41 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
+  "sourceRoot": "apps/realtime/src",
   "compilerOptions": {
-    "deleteOutDir": true
+    "deleteOutDir": true,
+    "tsConfigPath": "apps/realtime/tsconfig.app.json",
+    "webpack": true
+  },
+  "monorepo": true,
+  "root": "apps/realtime",
+  "projects": {
+    "media-contracts": {
+      "type": "library",
+      "root": "libs/media-contracts",
+      "entryFile": "index",
+      "sourceRoot": "libs/media-contracts/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/media-contracts/tsconfig.lib.json"
+      }
+    },
+    "realtime": {
+      "type": "application",
+      "root": "apps/realtime",
+      "entryFile": "main",
+      "sourceRoot": "apps/realtime/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/realtime/tsconfig.app.json"
+      }
+    },
+    "sfu": {
+      "type": "application",
+      "root": "apps/sfu",
+      "entryFile": "main",
+      "sourceRoot": "apps/sfu/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/sfu/tsconfig.app.json"
+      }
+    }
   }
 }

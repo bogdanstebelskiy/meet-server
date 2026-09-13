@@ -7,25 +7,29 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "start:prod": "node dist/apps/realtime/main",
+    "lint": "eslint \"{apps,libs}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./apps/realtime/test/jest-e2e.json",
+    "test:e2e:sfu": "jest --config ./apps/sfu/test/jest-e2e.json"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.29",
     "@nestjs/websockets": "^11.1.29",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "axios": "^1.20.0",
     "ioredis": "^6.0.0",
     "mediasoup": "^3.24.2",
     "reflect-metadata": "^0.2.2",
@@ -65,16 +69,21 @@
     ],
     "rootDir": ".",
     "roots": [
-      "<rootDir>/test/unit"
+      "<rootDir>/apps/",
+      "<rootDir>/libs/"
     ],
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "src/**/*.(t|j)s"
+      "apps/**/src/**/*.(t|j)s",
+      "libs/**/src/**/*.(t|j)s"
     ],
     "coverageDirectory": "coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@app/media-contracts(|/.*)$": "<rootDir>/libs/media-contracts/src/$1"
+    }
   }
 }
