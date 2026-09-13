@@ -169,8 +169,6 @@ export class SfuClientService {
     return this.request(() => this.httpService.delete<CloseRoomResponse>(url));
   }
 
-  // Every call targets a specific sfu instance's URL rather than a shared
-  // fixed baseURL - see sfu-client.module.ts.
   private buildUrl(nodeUrl: string, pattern: string, params: Record<string, string>): string {
     const path = buildMediaRoomPath(pattern, params);
     return `${nodeUrl}${path}`;
