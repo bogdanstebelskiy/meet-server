@@ -44,6 +44,16 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/require-await': 'off',
+    },
+  },
+  {
+    // Fakes like FakeRedis mirror a third-party async API (ioredis) whose
+    // methods this in-memory double implements synchronously - the async
+    // keyword is there to match the interface, not to await anything.
+    files: ['**/test/**/fakes/**/*.ts'],
+    rules: {
+      '@typescript-eslint/require-await': 'off',
     },
   },
 );
