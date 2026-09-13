@@ -32,6 +32,7 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          base: HEAD~1
           filters: |
             realtime:
               - 'apps/realtime/**'
