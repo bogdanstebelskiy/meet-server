@@ -87,6 +87,18 @@ infrastructure artifact):
 | 1 (4 cores) | 6,361 | 3,639 | 63.6% |
 | 2 (4 cores each) | 9,998 | 2 | 99.98% |
 
+A later run at `CORES_PER_REPLICA=3` extended this to a 1-4 replica curve,
+first at the same 10,000 simulated peers, then at 20,000 once 3 replicas
+stopped producing any failures at that size:
+
+| Peers  | Replicas | Succeeded | Failed | Success rate |
+|--------|----------|-----------|--------|--------------|
+| 10,000 | 1        | 5,172     | 4,828  | 51.7%        |
+| 10,000 | 2        | 9,998     | 2      | 99.98%       |
+| 10,000 | 3        | 10,000    | 0      | 100%         |
+| 20,000 | 3        | 15,196    | 4,804  | 76.0%        |
+| 20,000 | 4        | 19,992    | 8      | 99.96%       |
+
 ## Known gap found along the way (not fixed here)
 
 A large simultaneous disconnect burst can outrun `SignalingService.leave()`'s
