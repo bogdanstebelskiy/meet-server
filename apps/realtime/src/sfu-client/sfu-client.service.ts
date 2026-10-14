@@ -15,6 +15,8 @@ import type {
   RemovePeerResponse,
   ResumeConsumerResponse,
   ResumeProducerResponse,
+  StartRecordingResponse,
+  StopRecordingResponse,
   TransportDirection,
 } from '@app/media-contracts';
 import type { DtlsParameters, MediaKind, RtpCapabilities, RtpParameters } from 'mediasoup/types';
@@ -167,6 +169,24 @@ export class SfuClientService {
     const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.closeRoom, { roomId });
 
     return this.request(() => this.httpService.delete<CloseRoomResponse>(url));
+  }
+
+  startRecording(
+    nodeUrl: string,
+    roomId: string,
+    peers: Array<{ peerId: string; displayName: string }>,
+  ): Promise<StartRecordingResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.startRecording, { roomId });
+
+    return this.request(() =>
+      this.httpService.post<StartRecordingResponse>(url, { peers }),
+    );
+  }
+
+  stopRecording(nodeUrl: string, roomId: string): Promise<StopRecordingResponse> {
+    const url = this.buildUrl(nodeUrl, MEDIA_ROOM_ROUTES.stopRecording, { roomId });
+
+    return this.request(() => this.httpService.post<StopRecordingResponse>(url));
   }
 
   private buildUrl(nodeUrl: string, pattern: string, params: Record<string, string>): string {

@@ -137,6 +137,30 @@ export class SignalingGateway implements OnGatewayDisconnect {
     return { resumed: true };
   }
 
+  @SubscribeMessage('startRecording')
+  async startRecording(
+    @ConnectedSocket() client: SignalingSocket,
+    @RequireSocketContext() { roomId }: SocketContext,
+  ) {
+    await this.signalingService.startRecording(roomId);
+
+    client.to(roomId).emit('recordingStarted', { roomId });
+
+    return { recording: true };
+  }
+
+  @SubscribeMessage('stopRecording')
+  async stopRecording(
+    @ConnectedSocket() client: SignalingSocket,
+    @RequireSocketContext() { roomId }: SocketContext,
+  ) {
+    const { outputDir } = await this.signalingService.stopRecording(roomId);
+
+    client.to(roomId).emit('recordingStopped', { roomId });
+
+    return { stopped: true, outputDir };
+  }
+
   async handleDisconnect(client: SignalingSocket) {
     const { roomId, peerId } = client.data;
 

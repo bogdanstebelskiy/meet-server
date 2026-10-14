@@ -83,3 +83,16 @@ export interface RemovePeerResponse {
 export interface CloseRoomResponse {
   closed: boolean;
 }
+
+export interface StartRecordingRequest {
+  peers: Array<{ peerId: string; displayName: string }>;
+}
+
+export interface StartRecordingResponse {
+  recording: true;
+}
+
+export interface StopRecordingResponse {
+  stopped: true;
+  outputDir: string;
+}

@@ -17,4 +17,6 @@ export const MEDIA_ROOM_ROUTES = {
   resumeProducer: ':roomId/peers/:peerId/producers/:producerId/resume',
   removePeer: ':roomId/peers/:peerId',
   closeRoom: ':roomId',
+  startRecording: ':roomId/recording/start',
+  stopRecording: ':roomId/recording/stop',
 } as const;

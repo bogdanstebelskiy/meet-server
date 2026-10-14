@@ -151,6 +151,21 @@ export class SignalingService {
     await this.sfuClient.resumeProducer(sfuNodeUrl, roomId, peerId, producerId);
   }
 
+  async startRecording(roomId: string): Promise<void> {
+    const room = await this.getRoom(roomId);
+    const allPeers = await this.roomsService.getOtherPeers(roomId, '');
+    const peers = allPeers.map((p) => ({ peerId: p.id, displayName: p.displayName }));
+
+    await this.sfuClient.startRecording(room.sfuNodeUrl, roomId, peers);
+  }
+
+  async stopRecording(roomId: string): Promise<{ outputDir: string }> {
+    const room = await this.getRoom(roomId);
+    const { outputDir } = await this.sfuClient.stopRecording(room.sfuNodeUrl, roomId);
+
+    return { outputDir };
+  }
+
   async leave(roomId: string, peerId: string): Promise<void> {
     const room = await this.roomsService.getRoom(roomId);
 
