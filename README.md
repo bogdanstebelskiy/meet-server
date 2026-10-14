@@ -15,11 +15,19 @@ Both scale horizontally, by different mechanisms:
 
 See [`CONTEXT.md`](./CONTEXT.md) for the domain vocabulary (`Room` vs `MediaRoom` vs `Peer`) and [`docs/adr/0001-separate-sfu-and-realtime-apps.md`](./docs/adr/0001-separate-sfu-and-realtime-apps.md) for why the split happened, or [`docs/adr/0004-static-multi-instance-sfu-sticky-routing.md`](./docs/adr/0004-static-multi-instance-sfu-sticky-routing.md) for the sfu-scaling decision above. Architecture details, cross-cutting gotchas, and the test strategy live in [`docs/architecture.md`](./docs/architecture.md).
 
+## Recording
+
+Any participant can start/stop recording from the call UI. While recording, `apps/sfu` taps each peer's audio producer via a mediasoup PlainTransport, receives the Opus RTP stream on a local UDP socket, decodes it in-process with [`@discordjs/opus`](https://github.com/discordjs/opus), and writes 16 kHz mono 16-bit PCM WAV files, one per peer. A `meeting.json` with room metadata is written alongside the WAV files when recording stops.
+
+Output lands in `RECORDING_OUTPUT_DIR` (defaults to `./recordings`), organized by room ID. See [Configuration](#configuration) for the env vars.
+
+The per-peer WAV files are designed to feed into a downstream RAG pipeline: [`meet-transcript-agent`](https://github.com/bogdanstebelskiy/meet-transcript-agent) processes the recordings, transcribes them, and indexes the results so meeting content can be searched and retrieved later.
+
 ## Prerequisites
 
 - Node.js and npm
 - Redis (only `apps/realtime` needs it — for room state and chat history)
-- A build toolchain able to compile mediasoup's native bindings (`apps/sfu` depends on it directly)
+- A build toolchain able to compile native bindings (`apps/sfu` depends on mediasoup and `@discordjs/opus`, both of which have native addons)
 - [mkcert](https://github.com/FiloSottile/mkcert), if you want HTTPS locally (see below)
 
 ## Install
@@ -87,6 +95,8 @@ Environment variables, all optional with the fallbacks noted:
 | `SFU_WORKER_POOL_SIZE` | sfu | host core count (`os.cpus().length`) | Number of mediasoup workers to spawn. Set explicitly when running more than one `apps/sfu` instance per machine/container — `os.cpus()` reports the *host's* full core count even inside a CPU-limited container, so it over-allocates otherwise. |
 | `WEBRTC_ANNOUNCED_ADDRESS` | sfu | `127.0.0.1` | Must be a real LAN IP (not `0.0.0.0`/`127.0.0.1`) for cross-device WebRTC ICE to actually connect. Warns and falls back if unset. |
 | `WEBRTC_PORT_RANGE_MIN` / `WEBRTC_PORT_RANGE_MAX` | sfu | `40000` / `49999` | UDP/TCP port range mediasoup transports listen on. Give each `apps/sfu` instance on the same host a disjoint range. |
+| `RECORDING_OUTPUT_DIR` | sfu | `./recordings` | Directory where per-peer WAV files and `meeting.json` are written. Created automatically if it doesn't exist. |
+| `RECORDING_LISTEN_IP` | sfu | `127.0.0.1` | IP the recording UDP sockets bind to for receiving RTP from mediasoup PlainTransports. |
 
 ## Commands
 
