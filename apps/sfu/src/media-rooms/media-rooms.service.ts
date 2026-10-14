@@ -12,6 +12,7 @@ import type { TransportDirection } from '@app/media-contracts';
 import { WorkerPoolService } from '../workers/worker-pool.service';
 import { WebRtcConfigService } from '../config/webrtc-config.service';
 import { MediaCodecsConfigService } from '../config/media-codecs-config.service';
+import { RecordingService } from '../recording/recording.service';
 import { MediaRoom } from './entities/media-room.entity';
 import { MediaPeer } from './entities/media-peer.entity';
 
@@ -24,6 +25,7 @@ export class MediaRoomsService {
     private readonly workerPool: WorkerPoolService,
     private readonly webRtcConfig: WebRtcConfigService,
     private readonly mediaCodecsConfig: MediaCodecsConfigService,
+    private readonly recordingService: RecordingService,
   ) {}
 
   async getOrCreateRoom(roomId: string): Promise<MediaRoom> {
@@ -162,6 +164,9 @@ export class MediaRoomsService {
     const producer = await peer.sendTransport.produce({ kind, rtpParameters });
     peer.producers.set(producer.id, producer);
 
+    const room = this.getRoom(roomId);
+    await this.recordingService.tapProducerIfRecording(room, peer, producer);
+
     return producer;
   }
 
@@ -226,7 +231,20 @@ export class MediaRoomsService {
     room.removePeer(peerId);
   }
 
-  closeRoom(roomId: string): boolean {
+  async startRecording(
+    roomId: string,
+    peers: Array<{ peerId: string; displayName: string }>,
+  ): Promise<void> {
+    const room = this.getRoom(roomId);
+    await this.recordingService.startRoomRecording(room, peers);
+  }
+
+  async stopRecording(roomId: string): Promise<string> {
+    const room = this.getRoom(roomId);
+    return this.recordingService.stopRoomRecording(room);
+  }
+
+  async closeRoom(roomId: string): Promise<boolean> {
     const room = this.rooms.get(roomId);
 
     if (!room) {
@@ -235,6 +253,10 @@ export class MediaRoomsService {
 
     if (!room.isEmpty()) {
       return false;
+    }
+
+    if (room.recording) {
+      await this.recordingService.stopRoomRecording(room);
     }
 
     room.close();

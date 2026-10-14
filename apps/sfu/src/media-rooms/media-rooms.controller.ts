@@ -16,6 +16,9 @@ import type {
   RemovePeerResponse,
   ResumeConsumerResponse,
   ResumeProducerResponse,
+  StartRecordingRequest,
+  StartRecordingResponse,
+  StopRecordingResponse,
 } from '@app/media-contracts';
 import { MediaRoomsService } from './media-rooms.service';
 
@@ -148,10 +151,28 @@ export class MediaRoomsController {
     return { removed: true };
   }
 
+  @Post(MEDIA_ROOM_ROUTES.startRecording)
+  async startRecording(
+    @Param('roomId') roomId: string,
+    @Body() { peers }: StartRecordingRequest,
+  ): Promise<StartRecordingResponse> {
+    await this.mediaRoomsService.startRecording(roomId, peers);
+
+    return { recording: true };
+  }
+
+  @Post(MEDIA_ROOM_ROUTES.stopRecording)
+  @HttpCode(200)
+  async stopRecording(@Param('roomId') roomId: string): Promise<StopRecordingResponse> {
+    const outputDir = await this.mediaRoomsService.stopRecording(roomId);
+
+    return { stopped: true, outputDir };
+  }
+
   @Delete(MEDIA_ROOM_ROUTES.closeRoom)
   @HttpCode(200)
-  closeRoom(@Param('roomId') roomId: string): CloseRoomResponse {
-    const closed = this.mediaRoomsService.closeRoom(roomId);
+  async closeRoom(@Param('roomId') roomId: string): Promise<CloseRoomResponse> {
+    const closed = await this.mediaRoomsService.closeRoom(roomId);
 
     return { closed };
   }

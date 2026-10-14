@@ -21,6 +21,7 @@
     "test:e2e:sfu": "jest --config ./apps/sfu/test/jest-e2e.json"
   },
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",

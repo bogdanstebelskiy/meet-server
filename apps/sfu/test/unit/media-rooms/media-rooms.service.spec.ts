@@ -3,6 +3,7 @@ import { MediaRoomsService } from '../../../src/media-rooms/media-rooms.service'
 import { WorkerPoolService } from '../../../src/workers/worker-pool.service';
 import { WebRtcConfigService } from '../../../src/config/webrtc-config.service';
 import { MediaCodecsConfigService } from '../../../src/config/media-codecs-config.service';
+import { RecordingService } from '../../../src/recording/recording.service';
 
 describe('MediaRoomsService', () => {
   let service: MediaRoomsService;
@@ -16,6 +17,11 @@ describe('MediaRoomsService', () => {
     webRtcTransportOptions: unknown;
   };
   let mediaCodecsConfig: { codecs: unknown };
+  let recordingService: {
+    tapProducerIfRecording: jest.Mock;
+    startRoomRecording: jest.Mock;
+    stopRoomRecording: jest.Mock;
+  };
   let router: {
     rtpCapabilities: unknown;
     createWebRtcTransport: jest.Mock;
@@ -56,10 +62,17 @@ describe('MediaRoomsService', () => {
       codecs: [{ kind: 'audio', mimeType: 'audio/opus', clockRate: 48000 }],
     };
 
+    recordingService = {
+      tapProducerIfRecording: jest.fn().mockResolvedValue(undefined),
+      startRoomRecording: jest.fn().mockResolvedValue(undefined),
+      stopRoomRecording: jest.fn().mockResolvedValue('./recordings/room-1'),
+    };
+
     service = new MediaRoomsService(
       workerPool as unknown as WorkerPoolService,
       webRtcConfig as unknown as WebRtcConfigService,
       mediaCodecsConfig as unknown as MediaCodecsConfigService,
+      recordingService as unknown as RecordingService,
     );
   });
 
@@ -156,7 +169,7 @@ describe('MediaRoomsService', () => {
 
       expect(service.roomCount).toBe(2);
 
-      service.closeRoom('room-1');
+      await service.closeRoom('room-1');
 
       expect(service.roomCount).toBe(1);
     });
@@ -462,7 +475,7 @@ describe('MediaRoomsService', () => {
       const worker = stubWorkerCreatingRouter();
       await service.getOrCreateRoom('room-1');
 
-      const closed = service.closeRoom('room-1');
+      const closed = await service.closeRoom('room-1');
 
       expect(closed).toBe(true);
       expect(router.close).toHaveBeenCalledTimes(1);
@@ -475,7 +488,7 @@ describe('MediaRoomsService', () => {
       const room = await service.getOrCreateRoom('room-1');
       room.getOrCreatePeer('peer-1');
 
-      const closed = service.closeRoom('room-1');
+      const closed = await service.closeRoom('room-1');
 
       expect(closed).toBe(false);
       expect(router.close).not.toHaveBeenCalled();
@@ -483,8 +496,8 @@ describe('MediaRoomsService', () => {
       expect(service.getRoom('room-1')).toBe(room);
     });
 
-    it('reports already closed for an unknown room, so a double-close race stays quiet', () => {
-      expect(service.closeRoom('missing')).toBe(true);
+    it('reports already closed for an unknown room, so a double-close race stays quiet', async () => {
+      expect(await service.closeRoom('missing')).toBe(true);
     });
   });
 });

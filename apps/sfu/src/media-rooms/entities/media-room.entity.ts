@@ -5,7 +5,9 @@ export class MediaRoom {
   readonly id: string;
   readonly router: Router;
   readonly worker: Worker;
+  readonly createdAt = new Date();
 
+  recording = false;
   readonly peers = new Map<string, MediaPeer>();
 
   constructor(id: string, router: Router, worker: Worker) {
@@ -40,6 +42,7 @@ export class MediaRoom {
       return;
     }
 
+    this.stopPeerRecording(peer);
     peer.sendTransport?.close();
     peer.recvTransport?.close();
     this.peers.delete(peerId);
@@ -51,5 +54,27 @@ export class MediaRoom {
 
   close(): void {
     this.router.close();
+  }
+
+  private stopPeerRecording(peer: MediaPeer): void {
+    const session = peer.recordingSession;
+
+    if (session && !session.closed) {
+      session.closed = true;
+      session.socket.close();
+      session.fileHandle.close().catch(() => {});
+    }
+
+    peer.recordingSession = undefined;
+
+    if (peer.recordingConsumer && !peer.recordingConsumer.closed) {
+      peer.recordingConsumer.close();
+      peer.recordingConsumer = undefined;
+    }
+
+    if (peer.plainTransport && !peer.plainTransport.closed) {
+      peer.plainTransport.close();
+      peer.plainTransport = undefined;
+    }
   }
 }

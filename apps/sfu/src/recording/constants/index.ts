@@ -1,0 +1,10 @@
+export const WAV_HEADER_SIZE = 44;
+export const SAMPLE_RATE = 16000;
+export const CHANNELS = 1;
+export const BITS_PER_SAMPLE = 16;
+export const BYTES_PER_SAMPLE = 2;
+export const RTP_HEADER_MIN_SIZE = 12;
+export const OPUS_RTP_CLOCK_RATE = 48000;
+export const MAX_SILENCE_GAP_TICKS = 48000;
+export const OPUS_FRAME_SAMPLES = 960;
+export const TARGET_FRAME_SAMPLES = 320;
